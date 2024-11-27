@@ -1,5 +1,6 @@
 import { window } from "vscode";
 import { getLocalKafkaImageName, getLocalSchemaRegistryImageName } from "../configs";
+import { ApacheKafkaWorkflow } from "./apache-kafka";
 import { LocalResourceWorkflow } from "./base";
 import { ConfluentLocalWorkflow } from "./confluent-local";
 import { ConfluentPlatformSchemaRegistryWorkflow } from "./cp-schema-registry";
@@ -11,6 +12,9 @@ export function getKafkaWorkflow(): LocalResourceWorkflow {
   switch (imageRepo) {
     case ConfluentLocalWorkflow.imageRepo:
       workflow = ConfluentLocalWorkflow.getInstance();
+      break;
+    case ApacheKafkaWorkflow.imageRepo:
+      workflow = ApacheKafkaWorkflow.getInstance();
       break;
     // TODO: add support for other images here (apache/kafka, etc.)
     default: {

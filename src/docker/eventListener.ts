@@ -339,6 +339,11 @@ export class EventListener {
     } else if (imageName.startsWith(schemaRegistryImage)) {
       await setContextValue(ContextValues.localSchemaRegistryAvailable, started);
       localSchemaRegistryConnected.fire(started);
+    } else {
+      logger.debug(`ignoring container start event for image: "${imageName}, only tracking:"`, {
+        kafkaImage,
+        schemaRegistryImage,
+      });
     }
     // delete+recreate the local connection to purge any previous clusters from the sidecar cache
     await updateLocalConnection();

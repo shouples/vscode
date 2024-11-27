@@ -225,15 +225,11 @@ export class ConfluentPlatformSchemaRegistryWorkflow extends LocalResourceWorkfl
     const kafkaImageRepo: string = getLocalKafkaImageName();
     const kafkaImageTag: string = getLocalKafkaImageTag();
 
-    // TODO(shoup): update this for direct connections
-    // TEMPORARY: this will go away once we start working with direct connections
-    // ---
-    // first, look for a container with the Kafka REST proxy port exposed (8082),
-    // then use that network to find any other Kafka broker containers
+    // look for existing containers matching the configured Kafka image repo+tag, then use its
+    // Docker network name to filter other containers
     const leaderListRequest: ContainerListRequest = {
       filters: JSON.stringify({
         ancestor: [`${kafkaImageRepo}:${kafkaImageTag}`],
-        expose: ["8082"],
       }),
     };
     const leaderContainers: ContainerSummary[] = await getContainersForImage(leaderListRequest);
@@ -339,7 +335,7 @@ export class ConfluentPlatformSchemaRegistryWorkflow extends LocalResourceWorkfl
 
     // inform the sidecar that it needs to look for the Schema Registry container at the dynamically
     // assigned REST proxy port
-    await updateLocalConnection(`http://localhost:${restProxyPort}`);
+    await updateLocalConnection(undefined, `http://localhost:${restProxyPort}`);
 
     return { id: container.Id, name: CONTAINER_NAME };
   }

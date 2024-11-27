@@ -1,6 +1,11 @@
 import { authentication, AuthenticationSession } from "vscode";
 import { getSidecar } from ".";
-import { ContainerListRequest, ContainerSummary, Port } from "../clients/docker";
+import {
+  ContainerInspectResponse,
+  ContainerListRequest,
+  ContainerSummary,
+  Port,
+} from "../clients/docker";
 import {
   Connection,
   ConnectionSpec,
@@ -16,12 +21,14 @@ import {
 } from "../constants";
 import { ContextValues, getContextValue } from "../context/values";
 import {
+  getLocalKafkaImageName,
+  getLocalKafkaImageTag,
   getLocalSchemaRegistryImageName,
   getLocalSchemaRegistryImageTag,
   isDockerAvailable,
 } from "../docker/configs";
-import { MANAGED_CONTAINER_LABEL } from "../docker/constants";
-import { getContainersForImage } from "../docker/containers";
+import { getContainer, getContainersForImage } from "../docker/containers";
+import { determineKafkaBootstrapServers } from "../docker/workflows/cp-schema-registry";
 import { currentKafkaClusterChanged, currentSchemaRegistryChanged } from "../emitters";
 import { logResponseError } from "../errors";
 import { Logger } from "../logging";
@@ -168,46 +175,84 @@ export function hasCCloudAuthSession(): boolean {
  * relevant resource configs (for now, just Schema Registry containers, but in the future will
  * include Kafka and other resources).
  */
-export async function updateLocalConnection(schemaRegistryUri?: string): Promise<void> {
-  let spec: ConnectionSpec = LOCAL_CONNECTION_SPEC;
-
-  // TODO(shoup): look up Kafka containers here once direct connections are used
-
-  schemaRegistryUri = schemaRegistryUri ?? (await discoverSchemaRegistry());
-  if (schemaRegistryUri) {
-    spec = {
-      ...LOCAL_CONNECTION_SPEC,
-      local_config: {
-        ...LOCAL_CONNECTION_SPEC.local_config,
-        schema_registry_uri: schemaRegistryUri,
-      },
-    };
-  }
-
-  const currentLocalConnection: Connection | null = await getLocalConnection();
-  // inform sidecar if the spec has changed (whether this is a new spec or if we're changing configs)
-  if (JSON.stringify(spec) !== JSON.stringify(currentLocalConnection?.spec)) {
-    await deleteLocalConnection();
-    await tryToCreateConnection(spec);
-  }
-}
-
-// TODO(shoup): this may need to move into a different file for general resource discovery
-/** Discover any running Schema Registry containers and return the URI to include the REST proxy port. */
-async function discoverSchemaRegistry(): Promise<string | undefined> {
+export async function updateLocalConnection(
+  kafkaBootstrapServers?: string[],
+  schemaRegistryUri?: string,
+): Promise<void> {
   const dockerAvailable = await isDockerAvailable();
   if (!dockerAvailable) {
     return;
   }
 
+  const currentLocalConnection: Connection | null = await getLocalConnection();
+  let spec: ConnectionSpec = currentLocalConnection?.spec ?? LOCAL_CONNECTION_SPEC;
+
+  kafkaBootstrapServers = kafkaBootstrapServers ?? (await discoverKafka());
+  if (kafkaBootstrapServers.length > 0) {
+    spec = {
+      ...spec,
+      kafka_cluster: {
+        bootstrap_servers: kafkaBootstrapServers.join(","),
+      },
+    };
+  }
+
+  schemaRegistryUri = schemaRegistryUri ?? (await discoverSchemaRegistry());
+  if (schemaRegistryUri) {
+    spec = {
+      ...spec,
+      schema_registry: {
+        uri: schemaRegistryUri,
+      },
+    };
+  }
+
+  // inform sidecar if the spec has changed (whether this is a new spec or if we're changing configs)
+  if (JSON.stringify(spec) !== JSON.stringify(currentLocalConnection?.spec)) {
+    if (currentLocalConnection) {
+      await tryToUpdateConnection(spec);
+    } else {
+      await tryToCreateConnection(spec);
+    }
+  }
+}
+
+async function discoverKafka(): Promise<string[]> {
+  const imageRepo = getLocalKafkaImageName();
+  const imageTag = getLocalKafkaImageTag();
+  const containerListRequest: ContainerListRequest = {
+    filters: JSON.stringify({
+      ancestor: [`${imageRepo}:${imageTag}`],
+      status: ["running"],
+    }),
+  };
+  const containerSummaries: ContainerSummary[] = await getContainersForImage(containerListRequest);
+
+  const kafkaContainers: ContainerInspectResponse[] = [];
+  const inspectPromises: Promise<ContainerInspectResponse | undefined>[] = [];
+  containerSummaries.forEach((container) => {
+    if (!container.Id) {
+      return;
+    }
+    inspectPromises.push(getContainer(container.Id));
+  });
+  (await Promise.all(inspectPromises)).forEach((response: ContainerInspectResponse | undefined) => {
+    if (response) kafkaContainers.push(response);
+  });
+
+  const bootstrapServers = determineKafkaBootstrapServers(kafkaContainers);
+  logger.debug("Discovered Kafka bootstrap servers", { bootstrapServers });
+  return bootstrapServers;
+}
+
+/** Discover any running Schema Registry containers and return the URI to include the REST proxy port. */
+async function discoverSchemaRegistry(): Promise<string | undefined> {
   const imageRepo = getLocalSchemaRegistryImageName();
   const imageTag = getLocalSchemaRegistryImageTag();
-  const repoTag = `${imageRepo}:${imageTag}`;
+
   const containerListRequest: ContainerListRequest = {
-    all: true,
     filters: JSON.stringify({
-      ancestor: [repoTag],
-      label: [MANAGED_CONTAINER_LABEL],
+      ancestor: [`${imageRepo}:${imageTag}`],
       status: ["running"],
     }),
   };

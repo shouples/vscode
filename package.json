@@ -389,7 +389,8 @@
         "confluent.localDocker.kafkaImageRepo": {
           "type": "string",
           "enum": [
-            "confluentinc/confluent-local"
+            "confluentinc/confluent-local",
+            "apache/kafka"
           ],
           "default": "confluentinc/confluent-local",
           "description": "Docker image repo to use when starting a local Kafka container"

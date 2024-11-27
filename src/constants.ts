@@ -1,4 +1,4 @@
-import { ConnectionSpec } from "./clients/sidecar";
+import { ConnectionSpec, ConnectionType } from "./clients/sidecar";
 import { ConnectionId } from "./models/resource";
 
 /**
@@ -35,7 +35,7 @@ export const AUTH_PROVIDER_LABEL = "Confluent Cloud";
 export const CCLOUD_CONNECTION_SPEC: ConnectionSpec = {
   id: "vscode-confluent-cloud-connection",
   name: "Confluent Cloud",
-  type: "CCLOUD",
+  type: ConnectionType.Ccloud,
 };
 // these two avoid the need to use `CCLOUD_CONNECTION_SPEC.id!` or `CCLOUD_CONNECTION_SPEC.name!`
 // everywhere in the codebase
@@ -46,7 +46,7 @@ export const CCLOUD_CONNECTION_NAME = CCLOUD_CONNECTION_SPEC.name!;
 export const LOCAL_CONNECTION_SPEC: ConnectionSpec = {
   id: "vscode-local-connection",
   name: "Local",
-  type: "LOCAL",
+  type: ConnectionType.Direct,
 };
 // these two avoid the need to use `LOCAL_CONNECTION_SPEC.id!` or `LOCAL_CONNECTION_SPEC.name!`
 // everywhere in the codebase
