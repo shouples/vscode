@@ -55,6 +55,16 @@
         "label": "Confluent Cloud"
       }
     ],
+    "chatParticipants": [
+      {
+        "id": "confluent.chat-participant",
+        "name": "Confluent",
+        "description": "Provides a Copilot-powered chat assistant for Confluent and Apache Kafka® developers, offering guidance on configuration, development best practices, and troubleshooting for Kafka clusters, Schema Registry, Flink, connectors, and streaming applications.",
+        "isSticky": true,
+        "commands": [],
+        "disambiguation": []
+      }
+    ],
     "commands": [
       {
         "command": "confluent.connections.ccloud.signIn",
@@ -515,21 +525,25 @@
       "confluent": [
         {
           "id": "confluent-resources",
-          "name": "Resources"
+          "name": "Resources",
+          "icon": "$(confluent-logo)"
         },
         {
           "id": "confluent-topics",
           "name": "Topics",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "icon": "$(confluent-logo)"
         },
         {
           "id": "confluent-schemas",
           "name": "Schemas",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "icon": "$(confluent-logo)"
         },
         {
           "id": "confluent-support",
-          "name": "Support"
+          "name": "Support",
+          "icon": "$(confluent-logo)"
         }
       ]
     },
