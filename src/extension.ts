@@ -27,7 +27,6 @@ import { registerSchemaRegistryCommands } from "./commands/schemaRegistry";
 import { registerSchemaCommands } from "./commands/schemas";
 import { registerSupportCommands } from "./commands/support";
 import { registerTopicCommands } from "./commands/topics";
-import { setProjectScaffoldListener } from "./scaffold";
 import {
   AUTH_PROVIDER_ID,
   AUTH_PROVIDER_LABEL,
@@ -58,7 +57,7 @@ import { cleanupOldLogFiles, getLogFileStream, Logger, OUTPUT_CHANNEL } from "./
 import { ENABLE_CHAT_PARTICIPANT, ENABLE_FLINK } from "./preferences/constants";
 import { createConfigChangeListener } from "./preferences/listener";
 import { updatePreferences } from "./preferences/updates";
-import { registerProjectGenerationCommands } from "./scaffold";
+import { registerProjectGenerationCommands, setProjectScaffoldListener } from "./scaffold";
 import { JSON_DIAGNOSTIC_COLLECTION } from "./schemas/diagnosticCollection";
 import { getSidecar, getSidecarManager } from "./sidecar";
 import { ConnectionStateWatcher } from "./sidecar/connections/watcher";
@@ -389,7 +388,7 @@ async function setupFeatureFlags(): Promise<void> {
   // the local defaults from `setFlagDefaults()`
   resetFlagDefaults();
 
-  const client = getLaunchDarklyClient();
+  const client = await getLaunchDarklyClient();
   if (client) {
     // wait a few seconds for the LD client to initialize for the first time, because if we
     // continue to use the client before it's ready, it will return the default values for all flags
@@ -406,7 +405,7 @@ async function setupFeatureFlags(): Promise<void> {
     logger.info(`Feature flag client initialization ${initialized ? "completed" : "failed"}`);
   }
 
-  const disabledMessage: string | undefined = checkForExtensionDisabledReason();
+  const disabledMessage: string | undefined = await checkForExtensionDisabledReason();
   if (disabledMessage) {
     showExtensionDisabledNotification(disabledMessage);
     throw new Error(disabledMessage);
@@ -460,7 +459,7 @@ async function setupAuthProvider(): Promise<vscode.Disposable[]> {
       userInfo: undefined,
       session: cloudSession,
     });
-    getLaunchDarklyClient()?.identify({
+    (await getLaunchDarklyClient())?.identify({
       key: cloudSession.account.id,
       email: cloudSession.account.label,
     });
