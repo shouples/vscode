@@ -9,7 +9,7 @@ import {
 } from "../../tests/unit/testResources";
 import { ProduceRecordRequest, RecordsV3Api, ResponseError } from "../clients/kafkaRest";
 import { ConfluentCloudProduceRecordsResourceApi } from "../clients/sidecar";
-import { MessageViewerConfig } from "../consume";
+import { MessageViewerConfig } from "../messageViewer/config";
 import * as schemaQuickPicks from "../quickpicks/schemas";
 import * as uriQuickpicks from "../quickpicks/uris";
 import * as schemaSubjectUtils from "../quickpicks/utils/schemaSubjects";

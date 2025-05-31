@@ -1,220 +1,52 @@
 import { utcTicks } from "d3-time";
-import { Data } from "dataclass";
 import { ObservableScope } from "inertial";
-import { commands, env, ExtensionContext, Uri, ViewColumn, WebviewPanel, window } from "vscode";
-import {
-  canAccessSchemaForTopic,
-  showNoSchemaAccessWarningNotification,
-} from "./authz/schemaRegistry";
+import { Disposable, WebviewPanel } from "vscode";
 import {
   ResponseError,
   type PartitionConsumeRecord,
   type PartitionOffset,
   type SimpleConsumeMultiPartitionRequest,
   type SimpleConsumeMultiPartitionResponse,
-} from "./clients/sidecar";
-import { registerCommandWithLogging } from "./commands";
-import { LOCAL_CONNECTION_ID } from "./constants";
-import { getExtensionContext } from "./context/extension";
-import { showJsonPreview } from "./documentProviders/message";
-import { logError } from "./errors";
+} from "../clients/sidecar";
+import { showJsonPreview } from "../documentProviders/message";
+import { logError } from "../errors";
+import { Logger } from "../logging";
+import { type KafkaTopic } from "../models/topic";
+import { showErrorNotificationWithButtons } from "../notifications";
+import { type SidecarHandle } from "../sidecar";
+import { BitSet, includesSubstring, Stream } from "../stream/stream";
+import { hashed, logUsage, UserEvent } from "../telemetry/events";
+import { handleWebviewMessage } from "../webview/comms/comms";
+import { type post } from "../webview/message-viewer";
+import { MessageViewerConfig } from "./config";
 import {
-  CCloudResourceLoader,
-  DirectResourceLoader,
-  LocalResourceLoader,
-  ResourceLoader,
-} from "./loaders";
-import { Logger } from "./logging";
-import { ConnectionId } from "./models/resource";
-import { type KafkaTopic } from "./models/topic";
-import { showErrorNotificationWithButtons } from "./notifications";
-import { kafkaClusterQuickPick } from "./quickpicks/kafkaClusters";
-import { topicQuickPick } from "./quickpicks/topics";
-import { scheduler } from "./scheduler";
-import { getSidecar, type SidecarHandle } from "./sidecar";
-import { BitSet, includesSubstring, Stream } from "./stream/stream";
-import { hashed, logUsage, UserEvent } from "./telemetry/events";
-import { WebviewPanelCache } from "./webview-cache";
-import { handleWebviewMessage } from "./webview/comms/comms";
-import { type post } from "./webview/message-viewer";
-import messageViewerTemplate from "./webview/message-viewer.html";
+  DEFAULT_CONSUME_PARAMS,
+  DEFAULT_MAX_POLL_RECORDS,
+  getConsumeParams,
+  getTextFilterParams,
+  prepareMessage,
+  Timer,
+  truncateValue,
+} from "./utils";
 
-const logger = new Logger("consume");
-
-export function activateMessageViewer(context: ExtensionContext) {
-  /* All active message viewer instances share the same scheduler to perform API
-  requests. The scheduler defines number of concurrent requests at a time and a
-  minimum time interval for a single task to unblock a "thread". This all allows
-  faster consumption of retained messages for a single message viewer and prevents
-  rate limiting for multiple active message viewers. */
-  const schedule = scheduler(4, 500);
-
-  /* We track active topic as a kafka topic of a webview panel that is currently
-  visible on the screen. When the user clicks on Duplicate Message Browser action
-  at the top of the window, we can use the topic entity to start another message
-  viewer with the same topic. Otherwise, we use webview panel cache to only keep
-  a single active message browser per topic. */
-  let activeTopic: KafkaTopic | null = null;
-  let activeConfig: MessageViewerConfig | null = null;
-  const cache = new WebviewPanelCache();
-
-  // commands
-  context.subscriptions.push(
-    // the consume command is available in topic tree view's item actions
-    registerCommandWithLogging(
-      "confluent.topic.consume",
-      async (topic?: KafkaTopic, duplicate = false, config = MessageViewerConfig.create()) => {
-        if (topic == null) {
-          const cluster = await kafkaClusterQuickPick();
-          if (cluster == null) return;
-          topic = await topicQuickPick(cluster);
-          if (topic == null) return;
-        }
-
-        if (!(await canAccessSchemaForTopic(topic))) {
-          showNoSchemaAccessWarningNotification();
-        }
-        const sidecar = await getSidecar();
-
-        // this panel going to be active, so setting its topic to the currently active
-        activeTopic = topic;
-        activeConfig = config;
-        const [panel, cached] = cache.findOrCreate(
-          {
-            id: `${topic.clusterId}/${topic.name}`,
-            multiple: duplicate,
-            template: messageViewerTemplate,
-          },
-          "message-viewer",
-          `Topic: ${topic.name}`,
-          ViewColumn.One,
-          { enableScripts: true },
-        );
-
-        if (cached) {
-          panel.reveal();
-        } else {
-          panel.onDidChangeViewState((e) => {
-            // whenever we switch between panels, override active topic and config
-            if (e.webviewPanel.active) {
-              activeTopic = topic;
-              activeConfig = config;
-            }
-          });
-
-          messageViewerStartPollingCommand(
-            panel,
-            config,
-            (value) => (activeConfig = config = value),
-            topic,
-            sidecar,
-            schedule,
-          );
-        }
-      },
-    ),
-    registerCommandWithLogging("confluent.topic.consume.duplicate", async () => {
-      if (activeTopic != null) {
-        commands.executeCommand("confluent.topic.consume", activeTopic, true);
-      }
-    }),
-    registerCommandWithLogging("confluent.topic.consume.getUri", async () => {
-      if (activeTopic == null || activeConfig == null) return;
-      const query = activeConfig.toQuery();
-      query.set("origin", activeTopic.connectionType.toLowerCase());
-      // CCloud will have unique env IDs; local and direct will use their connection IDs
-      query.set("envId", activeTopic.environmentId);
-      query.set("clusterId", activeTopic.clusterId);
-      query.set("topicName", activeTopic.name);
-      const context = getExtensionContext();
-      const uri = Uri.from({
-        scheme: "vscode",
-        authority: context.extension.id,
-        path: "/consume",
-        query: query.toString(),
-      });
-      await env.clipboard.writeText(uri.toString());
-    }),
-    registerCommandWithLogging("confluent.topic.consume.fromUri", async (uri: Uri) => {
-      const params = new URLSearchParams(uri.query);
-      const origin = params.get("origin");
-      let envId = params.get("envId");
-      const clusterId = params.get("clusterId");
-      const topicName = params.get("topicName");
-      if (clusterId == null || topicName == null) {
-        return window.showErrorMessage("Unable to open Message Viewer: URI is malformed");
-      }
-      if (origin === "local" && !envId) {
-        // backwards compatibility for old URIs before we started using local env IDs
-        envId = LOCAL_CONNECTION_ID;
-      }
-
-      // we need to look up which ResourceLoader is responsible for the resources, whether they were
-      // cached or need to be fetched from the sidecar
-      let loader: ResourceLoader;
-      switch (origin) {
-        case "ccloud":
-          loader = CCloudResourceLoader.getInstance();
-          break;
-        case "local":
-          loader = LocalResourceLoader.getInstance();
-          break;
-        case "direct":
-          // direct connections' env IDs are the same as their connection IDs
-          if (envId == null) {
-            return window.showErrorMessage("Unable to open Message Viewer: URI is malformed");
-          }
-          loader = DirectResourceLoader.getInstance(envId as ConnectionId);
-          break;
-        default:
-          return window.showErrorMessage("Unable to open Message Viewer: URI is malformed");
-      }
-
-      if (envId == null) {
-        return window.showErrorMessage("Unable to open Message Viewer: URI is malformed");
-      }
-      const cluster = (await loader.getKafkaClustersForEnvironmentId(envId)).find(
-        (cluster) => cluster.id === clusterId,
-      );
-      if (cluster == null) {
-        return window.showErrorMessage("Unable to open Message Viewer: cluster not found");
-      }
-      const topics = await loader.getTopicsForCluster(cluster);
-      if (topics == null) {
-        return window.showErrorMessage("Unable to open Message Viewer: can't load topics");
-      }
-      const topic = topics.find((topic) => topic.name === topicName);
-      if (topic == null) {
-        return window.showErrorMessage("Unable to open Message Viewer: topic not found");
-      }
-      const config = MessageViewerConfig.fromQuery(params);
-      commands.executeCommand("confluent.topic.consume", topic, true, config);
-    }),
-  );
-}
+const logger = new Logger("messageViewer.panel");
 
 type MessageSender = OverloadUnion<typeof post>;
 type MessageResponse<MessageType extends string> = Awaited<
   ReturnType<Extract<MessageSender, (type: MessageType, body: any) => any>>
 >;
 
-const DEFAULT_MAX_POLL_RECORDS = 500;
-const DEFAULT_RECORDS_CAPACITY = 100_000;
-
-const DEFAULT_CONSUME_PARAMS = {
-  max_poll_records: DEFAULT_MAX_POLL_RECORDS,
-  message_max_bytes: 1 * 1024 * 1024,
-  fetch_max_bytes: 40 * 1024 * 1024,
-};
-
-function messageViewerStartPollingCommand(
+/**
+ * Creates and configures a message viewer panel with polling and message handling
+ */
+export function createMessageViewerPanel(
   panel: WebviewPanel,
   config: MessageViewerConfig,
   onConfigChange: (config: MessageViewerConfig) => void,
   topic: KafkaTopic,
   sidecar: SidecarHandle,
   schedule: <T>(cb: () => Promise<T>, signal?: AbortSignal) => Promise<T>,
-) {
+): Disposable {
   const service = sidecar.getKafkaConsumeApi(topic.connectionId);
   const partitionApi = sidecar.getPartitionV3Api(topic.clusterId, topic.connectionId);
 
@@ -243,15 +75,8 @@ function messageViewerStartPollingCommand(
   /** Consume mode: are we consuming from the beginning, expecting the newest messages, or targeting a timestamp. */
   const mode = os.signal<"beginning" | "latest" | "timestamp">(config.consumeMode);
 
-  // TODO build params object from config
   /** Parameters used by Consume API. */
-  const params = os.signal<SimpleConsumeMultiPartitionRequest>(
-    config.consumeMode === "latest"
-      ? DEFAULT_CONSUME_PARAMS
-      : config.consumeMode === "timestamp" && config.consumeTimestamp != null
-        ? { ...DEFAULT_CONSUME_PARAMS, timestamp: config.consumeTimestamp }
-        : { ...DEFAULT_CONSUME_PARAMS, from_beginning: true },
-  );
+  const params = os.signal<SimpleConsumeMultiPartitionRequest>(getInitialParams(config));
   /** List of currently consumed partitions. `null` for all partitions. */
   const partitionConsumed = os.signal<number[] | null>(config.partitionConsumed);
   /** List of currently filtered partitions. `null` for all consumed partitions. */
@@ -416,7 +241,7 @@ function messageViewerStartPollingCommand(
   });
 
   let queue: PartitionConsumeRecord[] = [];
-  function flushMessages(stream: Stream) {
+  function flushMessages(currentStream: Stream) {
     const search = os.peek(textFilter);
     while (queue.length > 0) {
       /* Pick messages from the queue one by one since we may stop putting 
@@ -425,7 +250,7 @@ function messageViewerStartPollingCommand(
 
       /* New messages inserted into the stream instance and its index is
       stored for further processing by existing filters. */
-      const index = stream.insert(message);
+      const index = currentStream.insert(message);
 
       if (search != null) {
         if (includesSubstring(message, search.regexp)) {
@@ -439,14 +264,15 @@ function messageViewerStartPollingCommand(
       /* For the first time when the stream reaches defined capacity, we pause 
       consumption so the user can work with exact data they expected to consume.
       They still can resume the stream back to get into "windowed" mode. */
-      if (!os.peek(isStreamFull) && stream.size >= stream.capacity) {
+      if (!os.peek(isStreamFull) && currentStream.size >= currentStream.capacity) {
         isStreamFull(true);
         state("paused");
-        timer((timer) => timer.pause());
+        timer((timer: Timer) => timer.pause());
         break;
       }
     }
   }
+
   function dropQueue() {
     queue = [];
   }
@@ -466,7 +292,7 @@ function messageViewerStartPollingCommand(
     );
   });
 
-  os.watch(async (signal) => {
+  os.watch(async (signal: AbortSignal) => {
     /* Cannot proceed any further if state got paused by the user or other
     events. If the state changes, this watcher is notified once again. */
     if (state() !== "running") return;
@@ -500,68 +326,7 @@ function messageViewerStartPollingCommand(
         notifyUI();
       });
     } catch (error) {
-      let reportable: { message: string } | null = null;
-      let shouldPause = false;
-      /* Async operations can be aborted by provided AbortController that is
-      controlled by the watcher. Nothing to log in this case. */
-      if (error instanceof Error && error.name === "AbortError") return;
-      /* In case of network issue, the current assumption is that the user is
-      going to see auth related error alerts. Logging and error displays is WIP. */
-      if (error instanceof ResponseError) {
-        const payload = await error.response.json();
-        // FIXME: this response error coming from the middleware that has to be present to avoid openapi error about missing middlewares
-        if (!payload?.aborted) {
-          const status = error.response.status;
-          shouldPause = status >= 400;
-          switch (status) {
-            case 401: {
-              reportable = { message: "Authentication required." };
-              break;
-            }
-            case 403: {
-              reportable = { message: "Insufficient permissions to read from topic." };
-              break;
-            }
-            case 404: {
-              if (String(payload?.title).startsWith("Error fetching the messages")) {
-                reportable = { message: "Topic not found." };
-              } else {
-                reportable = { message: "Unable to connect to the server." };
-              }
-              break;
-            }
-            case 429: {
-              reportable = { message: "Too many requests. Try again later." };
-              break;
-            }
-            default: {
-              reportable = { message: "Something went wrong." };
-              logError(error, "message viewer", { extra: { status: status.toString(), payload } });
-              showErrorNotificationWithButtons("Error response while consuming messages.");
-              break;
-            }
-          }
-          logger.error(
-            `An error occurred during messages consumption. Status ${error.response.status}`,
-          );
-        }
-      } else if (error instanceof Error) {
-        logger.error(error.message);
-        reportable = { message: "An internal error occurred." };
-        shouldPause = true;
-      }
-
-      os.batch(() => {
-        // in case of 4xx error pause the stream since we most likely won't be able to continue consuming
-        if (shouldPause) {
-          state("paused");
-          timer((timer) => timer.pause());
-        }
-        if (reportable != null) {
-          latestError(reportable);
-        }
-        notifyUI();
-      });
+      handleConsumeError(error, os, state, timer, latestError, notifyUI);
     }
   });
 
@@ -574,8 +339,8 @@ function messageViewerStartPollingCommand(
         const { results, indices } = stream().slice(offset, limit, includes);
         const messages = results.map(
           ({ partition_id, offset, timestamp, key, value, metadata }) => {
-            key = truncate(key);
-            value = truncate(value);
+            key = truncateValue(key);
+            value = truncateValue(value);
             return { partition_id, offset, timestamp, key, value, metadata };
           },
         );
@@ -639,18 +404,17 @@ function messageViewerStartPollingCommand(
         return (search?.query ?? "") satisfies MessageResponse<"GetSearchQuery">;
       }
       case "PreviewMessageByIndex": {
-        track({ action: "preview-message" });
+        trackMessageViewerAction(topic, { action: "preview-message" });
         const { messages, serialized } = stream();
         const index = body.index;
         const message = messages.at(index);
-        const payload = prepare(
+        const payload = prepareMessage(
           message,
           serialized.key.includes(index),
           serialized.value.includes(index),
         );
 
-        // use a single-instance provider to display a read-only document buffer with the message
-        // content
+        // use a single-instance provider to display a read-only document buffer with the message content
         const filename = `${topic.name}-message-${index}.json`;
         showJsonPreview(filename, payload, {
           partition: payload.partition_id,
@@ -659,7 +423,7 @@ function messageViewerStartPollingCommand(
         return null;
       }
       case "PreviewJSON": {
-        track({ action: "preview-snapshot" });
+        trackMessageViewerAction(topic, { action: "preview-snapshot" });
         const {
           timestamp,
           messages: { values },
@@ -673,7 +437,11 @@ function messageViewerStartPollingCommand(
           i++, p = timestamp.next[p]
         ) {
           if (includes(p)) {
-            payload = prepare(values[p], serialized.key.includes(p), serialized.value.includes(p));
+            payload = prepareMessage(
+              values[p],
+              serialized.key.includes(p),
+              serialized.value.includes(p),
+            );
             records.push("\t" + JSON.stringify(payload));
           }
         }
@@ -684,7 +452,7 @@ function messageViewerStartPollingCommand(
         return null satisfies MessageResponse<"PreviewJSON">;
       }
       case "SearchMessages": {
-        track({ action: "search" });
+        trackMessageViewerAction(topic, { action: "search" });
         if (body.search != null) {
           const { capacity, messages } = stream();
           const values = messages.values;
@@ -703,28 +471,28 @@ function messageViewerStartPollingCommand(
       }
       case "StreamPause": {
         state("paused");
-        timer((timer) => timer.pause());
+        timer((timer: Timer) => timer.pause());
         notifyUI();
         return null satisfies MessageResponse<"StreamPause">;
       }
       case "StreamResume": {
         state("running");
-        timer((timer) => timer.resume());
+        timer((timer: Timer) => timer.resume());
         notifyUI();
         return null satisfies MessageResponse<"StreamResume">;
       }
       case "ConsumeModeChange": {
-        track({ action: "consume-mode-change" });
+        trackMessageViewerAction(topic, { action: "consume-mode-change" });
         mode(body.mode);
         const maxPollRecords = Math.min(DEFAULT_MAX_POLL_RECORDS, os.peek(stream).capacity);
-        params(getParams(body.mode, body.timestamp, maxPollRecords));
+        params(getConsumeParams(body.mode, body.timestamp, maxPollRecords));
         stream((value) => new Stream(value.capacity));
         isStreamFull(false);
         textFilter((value) => {
           return value != null ? { ...value, bitset: new BitSet(value.bitset.capacity) } : null;
         });
         state("running");
-        timer((timer) => timer.reset());
+        timer((timer: Timer) => timer.reset());
         latestResult(null);
         partitionFilter(null);
         timestampFilter(null);
@@ -733,17 +501,17 @@ function messageViewerStartPollingCommand(
         return null satisfies MessageResponse<"ConsumeModeChange">;
       }
       case "PartitionConsumeChange": {
-        track({ action: "consume-partition-change" });
+        trackMessageViewerAction(topic, { action: "consume-partition-change" });
         partitionConsumed(body.partitions);
         const maxPollRecords = Math.min(DEFAULT_MAX_POLL_RECORDS, os.peek(stream).capacity);
-        params((value) => getParams(os.peek(mode), value.timestamp, maxPollRecords));
+        params((value) => getConsumeParams(os.peek(mode), value.timestamp, maxPollRecords));
         stream((value) => new Stream(value.capacity));
         isStreamFull(false);
         textFilter((value) => {
           return value != null ? { ...value, bitset: new BitSet(value.bitset.capacity) } : null;
         });
         state("running");
-        timer((timer) => timer.reset());
+        timer((timer: Timer) => timer.reset());
         latestResult(null);
         partitionFilter(null);
         timestampFilter(null);
@@ -752,28 +520,28 @@ function messageViewerStartPollingCommand(
         return null satisfies MessageResponse<"PartitionConsumeChange">;
       }
       case "PartitionFilterChange": {
-        track({ action: "filter-partition-change" });
+        trackMessageViewerAction(topic, { action: "filter-partition-change" });
         partitionFilter(body.partitions);
         notifyUI();
         return null satisfies MessageResponse<"PartitionFilterChange">;
       }
       case "TimestampFilterChange": {
-        debouncedTrack({ action: "filter-timestamp-change" });
+        debouncedTrack(topic, { action: "filter-timestamp-change" });
         timestampFilter(body.timestamps);
         notifyUI();
         return null satisfies MessageResponse<"TimestampFilterChange">;
       }
       case "MessageLimitChange": {
-        track({ action: "consume-message-limit-change" });
+        trackMessageViewerAction(topic, { action: "consume-message-limit-change" });
         const maxPollRecords = Math.min(DEFAULT_MAX_POLL_RECORDS, body.limit);
-        params((value) => getParams(os.peek(mode), value.timestamp, maxPollRecords));
+        params((value) => getConsumeParams(os.peek(mode), value.timestamp, maxPollRecords));
         stream(new Stream(body.limit));
         isStreamFull(false);
         textFilter((value) => {
           return value != null ? { ...value, bitset: new BitSet(body.limit) } : null;
         });
         state("running");
-        timer((timer) => timer.reset());
+        timer((timer: Timer) => timer.reset());
         latestResult(null);
         partitionFilter(null);
         timestampFilter(null);
@@ -790,70 +558,76 @@ function messageViewerStartPollingCommand(
     return result;
   });
 
-  panel.onDidDispose(() => {
-    handler.dispose();
-    os.dispose();
-  });
+  // Send telemetry for panel creation
+  trackMessageViewerAction(topic, { action: "opened" });
 
-  type TrackAction = {
-    action: string;
-  };
+  return Disposable.from(handler, { dispose: () => os.dispose() });
+}
 
-  /** Send a telemetry event. Will implicily include information about the topic/cluster. */
-  function track(details: TrackAction) {
-    const augmentedDetails = {
-      action: details.action,
-      connection_type: topic.connectionType,
-      connection_id: topic.connectionId,
-      environment_id: topic.environmentId,
-      cluster_id: topic.clusterId,
-      topic_hash: hashed(topic.name),
-    };
+function getInitialParams(config: MessageViewerConfig): SimpleConsumeMultiPartitionRequest {
+  return config.consumeMode === "latest"
+    ? DEFAULT_CONSUME_PARAMS
+    : config.consumeMode === "timestamp" && config.consumeTimestamp != null
+      ? { ...DEFAULT_CONSUME_PARAMS, timestamp: config.consumeTimestamp }
+      : { ...DEFAULT_CONSUME_PARAMS, from_beginning: true };
+}
 
-    logUsage(UserEvent.MessageViewerAction, augmentedDetails);
+function handleConsumeError(
+  error: any,
+  os: any,
+  state: any,
+  timer: any,
+  latestError: any,
+  notifyUI: () => void,
+) {
+  let reportable: { message: string } | null = null;
+  let shouldPause = false;
+
+  if (error instanceof Error && error.name === "AbortError") return;
+
+  if (error instanceof ResponseError) {
+    const status = error.response.status;
+    shouldPause = status >= 400;
+
+    switch (status) {
+      case 401:
+        reportable = { message: "Authentication required." };
+        break;
+      case 403:
+        reportable = { message: "Insufficient permissions to read from topic." };
+        break;
+      case 404:
+        reportable = { message: "Topic not found." };
+        break;
+      case 429:
+        reportable = { message: "Too many requests. Try again later." };
+        break;
+      default:
+        reportable = { message: "Something went wrong." };
+        logError(error, "message viewer", { extra: { status: status.toString() } });
+        showErrorNotificationWithButtons("Error response while consuming messages.");
+        break;
+    }
+
+    logger.error(`An error occurred during messages consumption. Status ${status}`);
+  } else if (error instanceof Error) {
+    logger.error(error.message);
+    reportable = { message: "An internal error occurred." };
+    shouldPause = true;
   }
 
-  let debounceTimer: ReturnType<typeof setTimeout>;
-
-  /** 200ms debounced sending a telemetry event. */
-  function debouncedTrack(details: TrackAction) {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(track, 200, details);
-  }
-
-  // End of new message viewer setup. Send a telemetry event when the message viewer is opened!
-  track({
-    action: "opened",
+  os.batch(() => {
+    if (shouldPause) {
+      state("paused");
+      timer((timer: Timer) => timer.pause());
+    }
+    if (reportable != null) {
+      latestError(reportable);
+    }
+    notifyUI();
   });
 }
 
-/** Define basic consume params based on desired consume mode. */
-function getParams(
-  mode: "beginning" | "latest" | "timestamp",
-  timestamp: number | undefined,
-  max_poll_records: number,
-): SimpleConsumeMultiPartitionRequest {
-  return mode === "beginning"
-    ? { ...DEFAULT_CONSUME_PARAMS, max_poll_records, from_beginning: true }
-    : mode === "timestamp"
-      ? { ...DEFAULT_CONSUME_PARAMS, max_poll_records, timestamp }
-      : { ...DEFAULT_CONSUME_PARAMS, max_poll_records };
-}
-
-function getTextFilterParams(query: string, capacity: number) {
-  const bitset = new BitSet(capacity);
-  const escaped = query
-    .trim()
-    // escape characters used by regexp itself
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    // 1. make existing whitespaces in query optional
-    // 2. add optional whitespaces at word boundaries
-    .replace(/\s+|\b/g, "\\s*");
-  const regexp = new RegExp(escaped, "i");
-  return { bitset, regexp, query };
-}
-
-/** Compute partition offsets for the next consume request, based on response of the previous one. */
 function getOffsets(
   params: SimpleConsumeMultiPartitionRequest,
   results: SimpleConsumeMultiPartitionResponse | null,
@@ -871,152 +645,22 @@ function getOffsets(
   return params;
 }
 
-/** Compress any valid json value into smaller payload for preview purpose. */
-function truncate(value: any): any {
-  if (value == null) return null;
-  if (typeof value === "object") {
-    value = JSON.stringify(value, null, " ");
-  }
-  if (typeof value === "string" && value.length > 1024) {
-    return value.slice(0, 256) + " ... " + value.slice(-256);
-  }
-  return value;
+function trackMessageViewerAction(topic: KafkaTopic, details: { action: string }) {
+  const augmentedDetails = {
+    action: details.action,
+    connection_type: topic.connectionType,
+    connection_id: topic.connectionId,
+    environment_id: topic.environmentId,
+    cluster_id: topic.clusterId,
+    topic_hash: hashed(topic.name),
+  };
+
+  logUsage(UserEvent.MessageViewerAction, augmentedDetails);
 }
 
-function prepare(
-  message: PartitionConsumeRecord,
-  keySerialized: boolean,
-  valueSerialized: boolean,
-) {
-  let key, value;
+let debounceTimer: ReturnType<typeof setTimeout>;
 
-  try {
-    key = keySerialized ? JSON.parse(message.key as any) : message.key;
-  } catch {
-    key = message.key;
-  }
-
-  try {
-    value = valueSerialized ? JSON.parse(message.value as any) : message.value;
-  } catch {
-    value = message.value;
-  }
-  const { partition_id, offset, timestamp, headers, metadata } = message;
-
-  return { partition_id, offset, timestamp, headers, key, value, metadata };
-}
-
-/**
- * Represents static snapshot of message viewer state that can be serialized.
- * Provides static method to deserialize the snapshot from a URI's query.
- */
-export class MessageViewerConfig extends Data {
-  consumeMode: "beginning" | "latest" | "timestamp" = "beginning";
-  consumeTimestamp: number | null = null;
-  partitionConsumed: number[] | null = null;
-  messageLimit: number = DEFAULT_RECORDS_CAPACITY;
-  partitionFilter: number[] | null = null;
-  timestampFilter: [number, number] | null = null;
-  textFilter: string | null = null;
-
-  static fromQuery(params: URLSearchParams) {
-    let value: string | null;
-    let config: Partial<MessageViewerConfig> = {};
-
-    value = params.get("consumeMode");
-    if (value != null && ["beginning", "latest", "timestamp"].includes(value)) {
-      config.consumeMode = value as "beginning" | "latest" | "timestamp";
-    }
-
-    value = params.get("consumeTimestamp");
-    if (value != null) {
-      const parsed = parseInt(value, 10);
-      if (!Number.isNaN(parsed)) {
-        config.consumeTimestamp = parsed;
-      }
-    }
-
-    value = params.get("partitionConsumed");
-    if (value != null) {
-      try {
-        const parsed = JSON.parse(`[${value}]`) as unknown[];
-        if (parsed.every((v): v is number => typeof v === "number")) {
-          config.partitionConsumed = parsed;
-        }
-      } catch {
-        // do nothing, fallback to default
-      }
-    }
-
-    value = params.get("messageLimit");
-    if (value != null) {
-      const parsed = parseInt(value, 10);
-      if (!Number.isNaN(parsed) && [1_000_000, 100_000, 10_000, 1_000, 100].includes(parsed)) {
-        config.messageLimit = parsed;
-      }
-    }
-
-    value = params.get("partitionFilter");
-    if (value != null) {
-      try {
-        const parsed = JSON.parse(`[${value}]`) as unknown[];
-        if (parsed.every((v): v is number => typeof v === "number")) {
-          config.partitionFilter = parsed;
-        }
-      } catch {
-        // do nothing, fallback to default
-      }
-    }
-
-    value = params.get("timestampFilter");
-    if (value != null) {
-      try {
-        const parsed = JSON.parse(`[${value}]`) as unknown[];
-        if (parsed.length === 2 && parsed.every((v): v is number => typeof v === "number")) {
-          config.timestampFilter = parsed as [number, number];
-        }
-      } catch {
-        // do nothing, fallback to default
-      }
-    }
-
-    value = params.get("textFilter");
-    if (value != null) {
-      config.textFilter = value;
-    }
-
-    return MessageViewerConfig.create(config);
-  }
-
-  toQuery(): URLSearchParams {
-    const params = new URLSearchParams();
-
-    for (let key in this) {
-      const value = this[key];
-      if (value != null) {
-        params.set(key, value.toString());
-      }
-    }
-
-    return params;
-  }
-}
-
-/**
- * Basic timer structure with pause/resume functionality.
- * Uses `Date.now()` for time tracking.
- */
-class Timer extends Data {
-  start = Date.now();
-  offset = 0;
-  pause(this: Timer) {
-    const now = Date.now();
-    return this.copy({ start: now, offset: now - this.start + this.offset });
-  }
-  resume(this: Timer) {
-    return this.copy({ start: Date.now() });
-  }
-  reset(this: Timer) {
-    return this.copy({ start: Date.now(), offset: 0 });
-  }
+function debouncedTrack(topic: KafkaTopic, details: { action: string }) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => trackMessageViewerAction(topic, details), 200);
 }

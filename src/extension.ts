@@ -26,13 +26,13 @@ import { registerExtraCommands } from "./commands/extra";
 import { registerFlinkComputePoolCommands } from "./commands/flinkComputePools";
 import { registerFlinkStatementCommands } from "./commands/flinkStatements";
 import { registerKafkaClusterCommands } from "./commands/kafkaClusters";
+import { registerMessageViewerCommands } from "./commands/messageViewer";
 import { registerOrganizationCommands } from "./commands/organizations";
 import { registerSchemaRegistryCommands } from "./commands/schemaRegistry";
 import { registerSchemaCommands } from "./commands/schemas";
 import { registerSupportCommands } from "./commands/support";
 import { registerTopicCommands } from "./commands/topics";
 import { AUTH_PROVIDER_ID, AUTH_PROVIDER_LABEL, IconNames } from "./constants";
-import { activateMessageViewer } from "./consume";
 import { setExtensionContext } from "./context/extension";
 import { observabilityContext } from "./context/observability";
 import { ContextValues, setContextValue } from "./context/values";
@@ -61,6 +61,7 @@ import { FlinkStatementManager } from "./flinkSql/flinkStatementManager";
 import { activateFlinkStatementResultsViewer } from "./flinkStatementResults";
 import { constructResourceLoaderSingletons } from "./loaders";
 import { cleanupOldLogFiles, getLogFileStream, Logger, OUTPUT_CHANNEL } from "./logging";
+import { MessageViewerManager } from "./messageViewer";
 import { registerProjectGenerationCommands, setProjectScaffoldListener } from "./scaffold";
 import { JSON_DIAGNOSTIC_COLLECTION } from "./schemas/diagnosticCollection";
 import { getSidecar, getSidecarManager } from "./sidecar";
@@ -232,6 +233,7 @@ async function _activateExtension(
     ...registerFlinkComputePoolCommands(),
     ...registerFlinkStatementCommands(),
     ...registerDocumentCommands(),
+    ...registerMessageViewerCommands(),
   ];
   logger.info("Commands registered");
 
@@ -243,6 +245,7 @@ async function _activateExtension(
     uriHandler,
     WebsocketManager.getInstance(),
     FlinkStatementManager.getInstance(),
+    MessageViewerManager.getInstance(),
     initializeFlinkLanguageClientManager(),
     ...authProviderDisposables,
     ...viewProviderDisposables,
@@ -250,8 +253,7 @@ async function _activateExtension(
     ...documentProviders,
   );
 
-  // these are also just handling command registration and setting disposables
-  activateMessageViewer(context);
+  // Handle remaining activation for features that need additional setup
   activateFlinkStatementResultsViewer(context);
 
   // Construct the singletons, let them register their event listeners.

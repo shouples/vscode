@@ -13,7 +13,7 @@ import {
   ProduceRequest as CCloudProduceRequest,
   ConfluentCloudProduceRecordsResourceApi,
 } from "../clients/sidecar";
-import { MessageViewerConfig } from "../consume";
+import { MessageViewerConfig } from "../messageViewer/config";
 import { MESSAGE_URI_SCHEME } from "../documentProviders/message";
 import { isResponseError, logError } from "../errors";
 import { Logger } from "../logging";
