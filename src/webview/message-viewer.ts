@@ -46,7 +46,7 @@ type ConsumeMode = "latest" | "beginning" | "timestamp";
  * available for the UI. It also talks to the "backend": sends and receives
  * messages from the host environment that manages stream consumption.
  */
-class MessageViewerViewModel extends ViewModel {
+export class MessageViewerViewModel extends ViewModel {
   page = this.signal(storage.get()?.page ?? 0);
   pageSize = this.signal(100);
 
@@ -444,6 +444,12 @@ class MessageViewerViewModel extends ViewModel {
   consumeMode = this.resolve<ConsumeMode>(() => post("GetConsumeMode"), "beginning");
   consumeModeTimestamp = this.resolve(() => post("GetConsumeModeTimestamp"), Date.now());
 
+  /** Formatted timestamp for datetime-local input (YYYY-MM-DDTHH:mm:ss.sss) */
+  consumeModeTimestampFormatted = this.derive(() => {
+    const timestamp: number | null = this.consumeModeTimestamp();
+    return timestampToDatetimeLocal(timestamp ?? Date.now());
+  });
+
   async handleConsumeModeChange(value: ConsumeMode) {
     const timestamp = Date.now();
     await post("ConsumeModeChange", { mode: value, timestamp });
@@ -461,6 +467,12 @@ class MessageViewerViewModel extends ViewModel {
     this.page(0);
     this.snapshot(this.emptySnapshot);
     this.selection(null);
+  }
+
+  /** Handler to convert the webview's datetime string input to internal numeric timestamp. */
+  async handleConsumeModeTimestampFormattedChange(datetimeLocal: string) {
+    const timestamp: number = datetimeLocalToTimestamp(datetimeLocal);
+    await this.handleConsumeModeTimestampChange(timestamp);
   }
 
   /** Numeric limit of messages that need to be consumed. */
@@ -572,6 +584,34 @@ class MessageViewerViewModel extends ViewModel {
       update();
     });
   }
+}
+
+/**
+ * Converts epoch milliseconds timestamp to datetime-local format (`YYYY-MM-DDTHH:mm:ss.sss`)
+ * Uses JavaScript Date methods which automatically convert to browser's local timezone
+ */
+export function timestampToDatetimeLocal(timestamp: number): string {
+  const date = new Date(timestamp);
+  // Format: YYYY-MM-DDTHH:mm:ss.sss
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
+/**
+ * Converts datetime-local format (`YYYY-MM-DDTHH:mm:ss.sss`) to epoch milliseconds
+ * Uses JavaScript Date constructor which automatically interprets input as local time
+ */
+export function datetimeLocalToTimestamp(datetimeLocal: string): number {
+  // Create Date object from the local datetime string
+  const date = new Date(datetimeLocal);
+  return date.getTime();
 }
 
 export function post(type: "GetStreamState"): Promise<StreamState>;
