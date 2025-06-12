@@ -991,8 +991,7 @@ export class MessageViewerConfig extends Data {
   toQuery(): URLSearchParams {
     const params = new URLSearchParams();
 
-    for (let key in this) {
-      const value = this[key];
+    for (const [key, value] of Object.entries(this)) {
       if (value != null) {
         params.set(key, value.toString());
       }
