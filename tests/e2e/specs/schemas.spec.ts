@@ -4,21 +4,26 @@ import { test } from "vscode-test-playwright";
 import { openConfluentExtension } from "./utils/confluent";
 import { login } from "./utils/confluentCloud";
 import { openFixtureFile } from "./utils/flinkStatement";
+import { ViewContainer, SchemasView, ResourcesView, ViewItem } from "../../objects";
 
 async function createNewSubject(page: Page, subjectName: string, schemaFile: string) {
   await openFixtureFile(page, schemaFile);
 
-  await page.getByLabel(/Schemas.*Section/).click();
-  await page.getByLabel(/Schemas.*Section/).hover();
-  await page.getByLabel("Select Schema Registry").click();
+  const viewContainer = ViewContainer.from(page); // Assuming ViewContainer is already open or doesn't need explicit open for these actions
+  const schemasView = SchemasView.from(page, viewContainer.getlocator());
+
+  await schemasView.getlocator().click(); // Or a more specific action if available
+  await schemasView.getlocator().hover();
+  await schemasView.clickSelectSchemaRegistry();
+
   await expect(page.getByPlaceholder("Select a Schema Registry")).toBeVisible();
   await page.getByPlaceholder("Select a Schema Registry").click();
 
   // Select the first option.
   await page.keyboard.press("Enter");
 
-  await page.getByLabel(/Schemas.*Section/).hover();
-  await page.getByLabel("Upload Schema to Schema Registry", { exact: true }).click();
+  await schemasView.getlocator().hover();
+  await schemasView.clickUploadSchema();
 
   await page.getByPlaceholder("Select a file").click();
   await page.keyboard.type(schemaFile);
@@ -41,8 +46,13 @@ async function evolveSchema(page: Page, subjectName: string, fixtureFile: string
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.press("ControlOrMeta+c");
 
-  await page.getByLabel(subjectName).first().hover({ timeout: 200 });
-  await page.getByRole("button", { name: "Evolve Latest Schema" }).click();
+  const viewContainer = ViewContainer.from(page); // Assuming ViewContainer is available
+  const schemasView = SchemasView.from(page, viewContainer.getlocator());
+  const subjectItem = await schemasView.getItem(subjectName);
+  await subjectItem.hover();
+
+  const evolveButton = subjectItem.getActionButton("Evolve Latest Schema");
+  await evolveButton.click();
   // Wait for the unsaved schema document to open.
   await page.waitForTimeout(1000);
 
@@ -65,10 +75,14 @@ async function evolveSchema(page: Page, subjectName: string, fixtureFile: string
  * @param page - The Playwright page object.
  * @param subjectName - The name of the subject to upload the schema to.
  */
-async function uploadSchema(page: any, subjectName: string) {
-  await page.getByLabel(/Schemas.*Section/).hover();
-  await expect(page.getByLabel("Upload Schema to Schema Registry", { exact: true })).toBeVisible();
-  await page.getByLabel("Upload Schema to Schema Registry", { exact: true }).click();
+async function uploadSchema(page: Page, subjectName: string) { // Changed page type to Page
+  const viewContainer = ViewContainer.from(page); // Assuming ViewContainer is available
+  const schemasView = SchemasView.from(page, viewContainer.getlocator());
+
+  await schemasView.getlocator().hover();
+  // The clickUploadSchema method implies visibility and action.
+  // Explicit visibility check can be added to SchemasView if needed.
+  await schemasView.clickUploadSchema();
 
   await expect(page.getByPlaceholder("Select a file")).toBeVisible();
   await page.getByPlaceholder("Select a file").click();
@@ -172,8 +186,11 @@ test.describe("Schema related functionality", () => {
         },
       ]);
 
-      await page.getByLabel("Resources Section").hover();
-      await page.getByLabel("Add New Connection").click();
+  const viewContainer = ViewContainer.from(page);
+  const resourcesView = ResourcesView.from(page, viewContainer.getlocator());
+
+  await resourcesView.getlocator().hover();
+  await resourcesView.clickAddNewConnection();
       await page.getByLabel("Enter manually").locator("a").click();
       const webview = page.locator("iframe").contentFrame().locator("iframe").contentFrame();
 

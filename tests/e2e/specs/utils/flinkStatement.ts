@@ -1,5 +1,6 @@
 import { FrameLocator, Page, expect } from "@playwright/test";
 import { FlinkStatementTestIds } from "./testIds";
+import { ViewContainer, ResourcesView, FlinkStatementsView, ViewItem } from "../../objects";
 
 /**
  * Submit a Flink statement to Confluent Cloud.
@@ -8,19 +9,31 @@ import { FlinkStatementTestIds } from "./testIds";
  * @param fileName - The name of the Flink SQL file to submit. Must be present in the `tests/fixtures` directory.
  */
 export async function submitFlinkStatement(page: Page, fileName: string) {
+  // Instantiate ViewContainer
+  const viewContainer = ViewContainer.from(page);
+  // Note: viewContainer.open() is not called here as per current structure, assuming extension is already open.
+
   // First, expand the CCloud env
-  await (await page.getByText("main-test-env")).click();
+  const resourcesView = ResourcesView.from(page, viewContainer.getlocator());
+  const envItem = await resourcesView.getItem("main-test-env");
+  await envItem.click();
+  // If "main-test-env" is an expandable item, consider calling await envItem.expand();
+  // For now, simple click is assumed based on original code.
 
   // Click on the first Flink compute pool
-  await (await page.getByText("AWS.us-east-1")).click();
+  // Assuming "AWS.us-east-1" becomes visible/available after clicking "main-test-env"
+  // and is also within the same ResourcesView. This might need adjustment if it's in a different view.
+  const computePoolItem = await resourcesView.getItem("AWS.us-east-1");
+  await computePoolItem.click();
 
   await openFixtureFile(page, fileName);
 
-  // Move the mouse and hover over Flink Statements
-  (await page.getByLabel("Flink Statements - main-test-env").all())[0].hover();
+  // Instantiate FlinkStatementsView and hover over it
+  const flinkView = FlinkStatementsView.from(page, viewContainer.getlocator());
+  await flinkView.getlocator().hover();
 
   // Click cloud upload icon in Flink statements view
-  await (await page.getByLabel("Submit Flink Statement")).click();
+  await flinkView.clickSubmitStatement();
 
   // Choose the select.flinksql file
   await page.keyboard.type(fileName);
