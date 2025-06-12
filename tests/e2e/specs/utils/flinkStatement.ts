@@ -16,21 +16,19 @@ export async function submitFlinkStatement(page: Page, fileName: string) {
   // First, expand the CCloud env
   const resourcesView = ResourcesView.from(page, viewContainer.getlocator());
   const envItem = await resourcesView.getItem("main-test-env");
-  await envItem.click();
-  // If "main-test-env" is an expandable item, consider calling await envItem.expand();
-  // For now, simple click is assumed based on original code.
+  await envItem.focus();
 
   // Click on the first Flink compute pool
   // Assuming "AWS.us-east-1" becomes visible/available after clicking "main-test-env"
   // and is also within the same ResourcesView. This might need adjustment if it's in a different view.
   const computePoolItem = await resourcesView.getItem("AWS.us-east-1");
-  await computePoolItem.click();
+  await computePoolItem.focus();
 
   await openFixtureFile(page, fileName);
 
-  // Instantiate FlinkStatementsView and hover over it
+  // Instantiate FlinkStatementsView and focus it
   const flinkView = FlinkStatementsView.from(page, viewContainer.getlocator());
-  await flinkView.getlocator().hover();
+  await flinkView.focus(); // Ensures the Flink Statements view section is active/expanded
 
   // Click cloud upload icon in Flink statements view
   await flinkView.clickSubmitStatement();

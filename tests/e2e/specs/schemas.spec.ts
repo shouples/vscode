@@ -12,8 +12,7 @@ async function createNewSubject(page: Page, subjectName: string, schemaFile: str
   const viewContainer = ViewContainer.from(page); // Assuming ViewContainer is already open or doesn't need explicit open for these actions
   const schemasView = SchemasView.from(page, viewContainer.getlocator());
 
-  await schemasView.getlocator().click(); // Or a more specific action if available
-  await schemasView.getlocator().hover();
+  await schemasView.focus(); // Replaces click and hover for focusing the view
   await schemasView.clickSelectSchemaRegistry();
 
   await expect(page.getByPlaceholder("Select a Schema Registry")).toBeVisible();
@@ -22,7 +21,9 @@ async function createNewSubject(page: Page, subjectName: string, schemaFile: str
   // Select the first option.
   await page.keyboard.press("Enter");
 
-  await schemasView.getlocator().hover();
+  // await schemasView.getlocator().hover(); // This was to ensure view is active before clicking button
+  // schemasView.focus() could be used here if the view might have lost focus or collapsed.
+  // For now, assuming the view is still active from the previous schemasView.focus()
   await schemasView.clickUploadSchema();
 
   await page.getByPlaceholder("Select a file").click();
@@ -49,7 +50,7 @@ async function evolveSchema(page: Page, subjectName: string, fixtureFile: string
   const viewContainer = ViewContainer.from(page); // Assuming ViewContainer is available
   const schemasView = SchemasView.from(page, viewContainer.getlocator());
   const subjectItem = await schemasView.getItem(subjectName);
-  await subjectItem.hover();
+  await subjectItem.focus(); // focus() includes hover, click, and expand
 
   const evolveButton = subjectItem.getActionButton("Evolve Latest Schema");
   await evolveButton.click();
@@ -79,7 +80,7 @@ async function uploadSchema(page: Page, subjectName: string) { // Changed page t
   const viewContainer = ViewContainer.from(page); // Assuming ViewContainer is available
   const schemasView = SchemasView.from(page, viewContainer.getlocator());
 
-  await schemasView.getlocator().hover();
+  await schemasView.focus(); // Ensures the Schemas view section is active/expanded
   // The clickUploadSchema method implies visibility and action.
   // Explicit visibility check can be added to SchemasView if needed.
   await schemasView.clickUploadSchema();
@@ -189,7 +190,7 @@ test.describe("Schema related functionality", () => {
   const viewContainer = ViewContainer.from(page);
   const resourcesView = ResourcesView.from(page, viewContainer.getlocator());
 
-  await resourcesView.getlocator().hover();
+  await resourcesView.focus(); // Ensures the Resources view section is active/expanded
   await resourcesView.clickAddNewConnection();
       await page.getByLabel("Enter manually").locator("a").click();
       const webview = page.locator("iframe").contentFrame().locator("iframe").contentFrame();

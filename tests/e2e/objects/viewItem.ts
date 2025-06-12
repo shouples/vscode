@@ -112,4 +112,14 @@ export class ViewItem {
   public getlocator(): Locator {
     return this.itemLocator;
   }
+
+  /**
+   * Focuses on the view item.
+   * This involves hovering, clicking, and then attempting to expand it if applicable.
+   */
+  public async focus(): Promise<void> {
+    await this.itemLocator.hover();
+    await this.itemLocator.click();
+    await this.expand(); // expand() already checks if expansion is applicable
+  }
 }

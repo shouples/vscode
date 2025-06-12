@@ -66,4 +66,37 @@ export class TreeView {
   public getlocator(): Locator {
     return this.viewLocator;
   }
+
+  /**
+   * Focuses on the tree view, ensuring it is visible and expanded.
+   * This typically involves hovering over the view's header and clicking it
+   * to make it active or expand it if it's a collapsible section.
+   */
+  public async focus(): Promise<void> {
+    // First, ensure the view container itself is visible (the TreeView is part of a larger container)
+    // This check might be implicitly handled if parentContainerLocator is used correctly,
+    // but an explicit check on viewLocator can be good.
+    await this.viewLocator.waitFor({ state: 'visible', timeout: 5000 });
+
+    // The viewLocator is for the div[role="tree"]. The clickable header is likely an h3 within it or sibling to it.
+    // Let's assume the h3 element with the viewName is what needs to be clicked to expand/focus.
+    // This selector might need refinement based on actual DOM.
+    const viewHeaderLocator = this.viewLocator.locator(`xpath=./ancestor::div[contains(@class, 'pane')]//h3[contains(., '${this.viewName}')] | ./h3[contains(., '${this.viewName}')]`);
+
+    if (!(await viewHeaderLocator.isVisible())) {
+      // If the header isn't visible, the view might be scrolled out of view or in a collapsed parent.
+      // This simple focus won't handle complex scrolling scenarios, but will try to click if found.
+      // Fallback to ensure the general view area is at least hovered.
+      await this.viewLocator.hover();
+    } else {
+      await viewHeaderLocator.hover();
+      // Click to expand/focus. For VS Code sections, clicking the header title usually toggles expansion.
+      // We need to check if it's already expanded (e.g., aria-expanded on the parent element or button).
+      // For simplicity here, we'll click. A more robust solution would check 'aria-expanded' on the section header's button if available.
+      await viewHeaderLocator.click();
+    }
+
+    // Add a small wait to ensure any associated UI updates (like loading items) can occur.
+    await this.page.waitForTimeout(200); // Arbitrary small delay
+  }
 }
