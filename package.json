@@ -3,7 +3,7 @@
   "type": "module",
   "displayName": "Confluent",
   "description": "Work with Confluent and Apache Kafka® to design, build and run data streaming applications.",
-  "version": "1.5.0-15",
+  "version": "1.4.0-52",
   "homepage": "https://github.com/confluentinc/vscode",
   "publisher": "confluentinc",
   "author": {
@@ -443,12 +443,6 @@
         "category": "Confluent: Flink Statements"
       },
       {
-        "command": "confluent.flinkStatementResults",
-        "icon": "$(confluent-view-messages)",
-        "title": "View Flink Statement Results",
-        "category": "Confluent: Flink Statements"
-      },
-      {
         "command": "confluent.statements.viewstatementsql",
         "title": "View Statement SQL",
         "category": "Confluent: Flink Statements"
@@ -544,11 +538,6 @@
         "category": "Confluent: Schemas"
       },
       {
-        "command": "confluent.schemas.copySubject",
-        "title": "Copy Subject",
-        "category": "Confluent: Schemas"
-      },
-      {
         "command": "confluent.schemas.search",
         "icon": "$(search)",
         "title": "Search",
@@ -611,6 +600,12 @@
         "icon": "$(confluent-view-messages)",
         "title": "View Messages",
         "category": "Confluent: Topic"
+      },
+      {
+        "command": "confluent.flinkStatementResults",
+        "icon": "$(confluent-view-messages)",
+        "title": "View Flink Statement Results",
+        "category": "Confluent: Flink Statements"
       },
       {
         "command": "confluent.topic.consume.duplicate",
@@ -803,11 +798,6 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the `krb5.conf` file to use for Kerberos authentication in direct connections. This setting is used when connecting to Kafka clusters that require Kerberos authentication. (You can also use the [\"Set Kerberos krb5.conf Path\" command](command:confluent.connections.setKrb5ConfigPath).)"
-          },
-          "confluent.showNewVersionNotifications": {
-            "type": "boolean",
-            "default": true,
-            "markdownDescription": "Show notifications when the extension is first installed or updated to a new version. Disabling this will prevent welcome messages and update notifications from appearing during extension activation.\n\n_NOTE: This does not affect error notifications or other extension functionality._"
           }
         }
       },
@@ -826,13 +816,13 @@
             "type": "string",
             "default": "",
             "order": 2,
-            "markdownDescription": "ID for the compute pool to use as a default in Confluent Cloud for Apache Flink® SQL operations. The value must be a valid Confluent Cloud compute pool ID. \n\nTo select from the list of available compute pools use the [\"Configure default settings for Flink SQL actions\" command](command:confluent.flink.configureFlinkDefaults)."
+            "description": "ID for the compute pool to use as a default in Confluent Cloud for Apache Flink® SQL operations."
           },
           "confluent.flink.database": {
             "type": "string",
             "order": 3,
             "default": "",
-            "markdownDescription": "Name or ID for Apache Kafka® cluster in Confluent to use as the default Confluent Cloud for Apache Flink® SQL database. The value must be a valid Confluent Cloud database (Kafka cluster) name or ID. \n\nTo select from the list of available databases use the [\"Configure default settings for Flink SQL actions\" command](command:confluent.flink.configureFlinkDefaults)."
+            "description": "Name or ID for Apache Kafka® cluster in Confluent to use as the default Confluent Cloud for Apache Flink® SQL database."
           },
           "confluent.flink.updateComputePoolIdFromCodelens": {
             "markdownDescription": "Controls whether or not to update `#confluent.flink.computePoolId#` after selecting a compute pool from the 'Set Compute Pool' codelens.",
@@ -992,7 +982,7 @@
         },
         {
           "id": "confluent-flink-statements",
-          "name": "Flink Statements (Preview)",
+          "name": "Flink Statements",
           "visibility": "collapsed",
           "icon": "$(confluent-logo)"
         },
@@ -1173,10 +1163,6 @@
         },
         {
           "command": "confluent.schemas.copySchemaRegistryId",
-          "when": "false"
-        },
-        {
-          "command": "confluent.schemas.copySubject",
           "when": "false"
         },
         {
@@ -1537,11 +1523,6 @@
           "group": "4_copy@1"
         },
         {
-          "command": "confluent.schemas.copySubject",
-          "when": "(view == confluent-schemas || view == confluent-topics) && viewItem =~ /.*schema-subject$/",
-          "group": "4_copy@1"
-        },
-        {
           "command": "confluent.schemas.diffMostRecentVersions",
           "when": "(view == confluent-schemas || view == confluent-topics) && viewItem =~ /.*multiple-versions.*schema-subject/",
           "group": "3_compare"
@@ -1584,6 +1565,11 @@
         {
           "command": "confluent.topic.consume",
           "when": "view == confluent-topics && viewItem =~ /.*-topic.*-authzREAD.*/",
+          "group": "inline@1"
+        },
+        {
+          "command": "confluent.flinkStatementResults",
+          "when": "view == confluent-flink-statements && viewItem =~ /.*flink-statement$/",
           "group": "inline@1"
         },
         {
@@ -1635,11 +1621,6 @@
           "command": "confluent.openCCloudApiKeysUrl",
           "when": "view in confluent.viewsWithResources && (viewItem == ccloud-kafka-cluster || viewItem == ccloud-schema-registry)",
           "group": "z_openInCloud"
-        },
-        {
-          "command": "confluent.flinkStatementResults",
-          "when": "view == confluent-flink-statements && viewItem =~ /.*flink-statement$/",
-          "group": "inline@1"
         }
       ]
     },

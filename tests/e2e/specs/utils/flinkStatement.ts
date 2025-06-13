@@ -1,6 +1,6 @@
 import { FrameLocator, Page, expect } from "@playwright/test";
 import { FlinkStatementTestIds } from "./testIds";
-import { ViewContainer, ResourcesView, FlinkStatementsView, ViewItem } from "../../objects";
+import { ViewContainer, ResourcesView, FlinkStatementsView, ViewItem } from "../../objects/index.ts";
 
 /**
  * Submit a Flink statement to Confluent Cloud.

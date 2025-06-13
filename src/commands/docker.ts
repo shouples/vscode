@@ -244,6 +244,7 @@ export function orderWorkflows(
   );
   if (!kafkaWorkflow) {
     // no ordering required yet
+    // TODO(shoup): maybe update this once we include Flink and other resources
     return workflows;
   }
 

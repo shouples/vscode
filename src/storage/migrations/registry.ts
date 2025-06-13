@@ -10,6 +10,4 @@ export const migrations: Record<number, BaseMigration> = {
 };
 
 /** Ordered list of migration version numbers. */
-export const migrationVersions: number[] = Object.keys(migrations)
-  .map(Number)
-  .sort((a, b) => a - b);
+export const migrationVersions: number[] = Object.keys(migrations).map(Number).sort();

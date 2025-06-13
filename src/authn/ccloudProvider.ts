@@ -292,15 +292,13 @@ export class ConfluentCloudAuthProvider implements vscode.AuthenticationProvider
     }
 
     const session = convertToAuthSession(connection);
-
     if (changedToConnected) {
-      // This transition is either very rare or impossible to get into altogether, because changes
-      // from disconnected->connected will update secret state or go through `createSession()`, and
-      // the poller won't be running to notice this kind of change
+      // TODO: possibly remove this check since this transition is either very rare or impossible to
+      // get into altogether, because changes from disconnected->connected will update secret state
+      // or go through `createSession()`, and the poller won't be running to notice this kind of change
       logger.debug("getSessions() transitioned from disconnected to connected", logBody);
       await this.handleSessionCreated(session, true);
     }
-
     logger.debug("getSessions() returning session");
     return [session];
   }

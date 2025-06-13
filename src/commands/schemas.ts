@@ -23,7 +23,6 @@ import {
   confirmSchemaSubjectDeletion,
   confirmSchemaVersionDeletion,
   hardDeletionQuickPick,
-  showHardDeleteWarningModal,
 } from "./utils/schemas";
 
 const logger = new Logger("commands.schemas");
@@ -44,7 +43,6 @@ export function registerSchemaCommands(): vscode.Disposable[] {
       viewLatestLocallyCommand,
     ),
     registerCommandWithLogging("confluent.schemas.copySchemaRegistryId", copySchemaRegistryId),
-    registerCommandWithLogging("confluent.schemas.copySubject", copySubject),
     registerCommandWithLogging("confluent.topics.openlatestschemas", openLatestSchemasCommand),
     registerCommandWithLogging(
       "confluent.schemas.diffMostRecentVersions",
@@ -83,14 +81,6 @@ async function copySchemaRegistryId() {
   }
   await vscode.env.clipboard.writeText(schemaRegistry.id);
   vscode.window.showInformationMessage(`Copied "${schemaRegistry.id}" to clipboard.`);
-}
-
-export async function copySubject(subject: Subject) {
-  if (!subject || typeof subject.name !== "string") {
-    return;
-  }
-  await vscode.env.clipboard.writeText(subject.name);
-  vscode.window.showInformationMessage(`Copied subject name "${subject.name}" to clipboard.`);
 }
 
 /** User has gestured to create a new schema from scratch relative to the currently selected schema registry. */
@@ -309,13 +299,6 @@ async function deleteSchemaVersionCommand(schema: Schema) {
     return;
   }
 
-  if (hardDelete) {
-    const finalConfirm = await showHardDeleteWarningModal("schema version");
-    if (!finalConfirm) {
-      logger.debug("User canceled schema version hard deletion at warning modal.");
-      return;
-    }
-  }
   let success = true;
 
   // Drive the delete via the resource loader so will be cache consistent.
@@ -466,14 +449,6 @@ async function deleteSchemaSubjectCommand(subject: Subject) {
   if (!confirmation) {
     logger.debug("User canceled schema subject deletion.");
     return;
-  }
-
-  if (hardDelete) {
-    const finalConfirm = await showHardDeleteWarningModal("schema subject");
-    if (!finalConfirm) {
-      logger.debug("User canceled schema subject hard deletion at warning modal.");
-      return;
-    }
   }
 
   logger.info("Deleting schema subject", subject.name);

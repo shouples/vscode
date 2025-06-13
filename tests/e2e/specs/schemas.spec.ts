@@ -4,7 +4,7 @@ import { test } from "vscode-test-playwright";
 import { openConfluentExtension } from "./utils/confluent";
 import { login } from "./utils/confluentCloud";
 import { openFixtureFile } from "./utils/flinkStatement";
-import { ViewContainer, SchemasView, ResourcesView, ViewItem } from "../../objects";
+import { ViewContainer, SchemasView, ResourcesView, ViewItem } from "../objects/index.ts";
 
 async function createNewSubject(page: Page, subjectName: string, schemaFile: string) {
   await openFixtureFile(page, schemaFile);

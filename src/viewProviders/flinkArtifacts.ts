@@ -3,10 +3,10 @@ import { ContextValues } from "../context/values";
 import { currentFlinkArtifactsPoolChanged } from "../emitters";
 import { FlinkArtifact, FlinkArtifactTreeItem } from "../models/flinkArtifact";
 import { CCloudFlinkComputePool } from "../models/flinkComputePool";
-import { ParentedBaseViewProvider } from "./base";
+import { BaseViewProvider } from "./base";
 
 export class FlinkArtifactsViewProvider
-  extends ParentedBaseViewProvider<CCloudFlinkComputePool, FlinkArtifact>
+  extends BaseViewProvider<CCloudFlinkComputePool, FlinkArtifact>
   implements TreeDataProvider<FlinkArtifact>
 {
   readonly kind = "flinkArtifacts";
@@ -18,13 +18,13 @@ export class FlinkArtifactsViewProvider
 
   searchContextValue = ContextValues.flinkArtifactsSearchApplied;
 
-  getChildren(): FlinkArtifact[] {
+  async getChildren(): Promise<FlinkArtifact[]> {
     const children: FlinkArtifact[] = [];
     if (!this.computePool) {
       return children;
     }
 
-    const pool: CCloudFlinkComputePool = this.computePool;
+    const pool: CCloudFlinkComputePool = this.computePool as CCloudFlinkComputePool;
 
     // TODO: replace this with real data -- this should not require any pool-specific filtering,
     // but use the environment, provider, and region from the pool

@@ -108,7 +108,7 @@ describe("commands/docker.ts runWorkflowWithProgress()", () => {
     assert.ok(showErrorNotificationStub.calledOnce);
   });
 
-  // once multi-select quickpick is added, update these in follow-on branch.
+  // TODO(shoup): update these in follow-on branch once multi-select quickpick is added
   it("should call the Kafka workflow's .start() method when start=true", async () => {
     await runWorkflowWithProgress();
 
@@ -192,6 +192,7 @@ describe("commands/docker.ts orderWorkflows()", () => {
     assert.strictEqual(orderedWorkflows[0].resourceKind, stubKafkaWorkflow.resourceKind);
   });
 
+  // TODO(shoup): maybe update this once we include Flink and other resources
   it("should not sort workflows if Kafka is not included", () => {
     const workflows = [stubSchemaRegistryWorkflow];
     const orderedWorkflows = orderWorkflows(workflows, true);

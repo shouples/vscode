@@ -22,6 +22,8 @@ export function connectionIdToType(id: ConnectionId): ConnectionType {
   }
 }
 
+// TODO: use other branded resource ID types here
+
 export interface IResourceBase {
   connectionId: ConnectionId;
   connectionType: ConnectionType;
@@ -62,7 +64,7 @@ export function isDirect(resource: IResourceBase): boolean {
 export enum ConnectionLabel {
   LOCAL = "Local",
   CCLOUD = "Confluent Cloud",
-  DIRECT = "Other",
+  DIRECT = "Other", // TODO: update based on feedback from product+design
 }
 
 /** Get the human-readable label for the given connection type. */

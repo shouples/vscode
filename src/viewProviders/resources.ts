@@ -210,7 +210,6 @@ export class ResourceViewProvider
       }
     } else {
       // start loading the root-level items
-      logger.debug("starting GQL queries");
       const resourcePromises: [
         Promise<ContainerTreeItem<CCloudEnvironment>>,
         Promise<ContainerTreeItem<LocalKafkaCluster | LocalSchemaRegistry>>,
@@ -222,7 +221,6 @@ export class ResourceViewProvider
         ContainerTreeItem<LocalKafkaCluster | LocalSchemaRegistry>,
         DirectEnvironment[],
       ] = await Promise.all(resourcePromises);
-      logger.debug("done with GQL queries");
 
       this.assignIsLoading(directEnvironments);
 
@@ -247,9 +245,6 @@ export class ResourceViewProvider
           // update the environment's isLoading state before adding it to the map
           const cachedLoading = this.cachedLoadingStates.get(env.id);
           if (cachedLoading !== undefined) {
-            logger.debug(
-              `updating environment ${env.id} with cached loading state: ${cachedLoading}`,
-            );
             env.isLoading = cachedLoading;
             this.cachedLoadingStates.delete(env.id);
           }
@@ -263,10 +258,6 @@ export class ResourceViewProvider
             env = this.updateEnvironmentFromConnectionStatus(env, latestStatus);
           }
           this.environmentsMap.set(env.id, env);
-        });
-        logger.debug("done handling direct environments", {
-          directEnvironments: directEnvironments.map((env) => env.id),
-          environmentsMapSize: this.environmentsMap.size,
         });
       }
     }
@@ -292,8 +283,9 @@ export class ResourceViewProvider
       // update the tree view message to show how many results were found to match the search string
       // NOTE: this can't be done in `getTreeItem()` because if we don't return children here, it
       // will never be called and the message won't update
+      const plural = this.totalItemCount > 1 ? "s" : "";
       if (this.searchMatches.size > 0) {
-        this.treeView.message = `Showing ${this.searchMatches.size} of ${this.totalItemCount} for "${this.itemSearchString}"`;
+        this.treeView.message = `Showing ${this.searchMatches.size} of ${this.totalItemCount} result${plural} for "${this.itemSearchString}"`;
       } else {
         // let empty state take over
         this.treeView.message = undefined;
@@ -413,23 +405,15 @@ export class ResourceViewProvider
         // direct connections are treated as environments, so we can look up the direct "environment"
         // by its connection ID
         let environment = this.environmentsMap.get(id) as DirectEnvironment | undefined;
-
         if (environment) {
           logger.debug(`refreshing direct environment id="${id}" with loading state: ${loading}`);
           if (!loading) {
             // if the connection is usable, we need to refresh the children of the environment
             // to potentially show the Kafka clusters and Schema Registry and update the collapsible
             // state of the item
-            logger.debug("refreshing direct environment children via GQL query", {
-              id,
-            });
             const directEnv: DirectEnvironment | undefined = await getDirectResources(
               environment.connectionId,
             );
-            logger.debug("got direct environment from GQL query", {
-              connectionId: environment.connectionId,
-              directEnv,
-            });
             if (directEnv) {
               environment.kafkaClusters = directEnv.kafkaClusters;
               environment.schemaRegistry = directEnv.schemaRegistry;
@@ -467,7 +451,6 @@ export class ResourceViewProvider
     }
     logger.debug("updating environment with last status from connection state watcher", {
       id: env.id,
-      status: { ...status, authentication: undefined },
     });
     // if either of these are undefined, we clear any error text that will be seen in the tooltips;
     // otherwise we display the error message(s) in the tooltip

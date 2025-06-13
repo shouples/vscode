@@ -87,8 +87,7 @@ export function summarizeLocalConnection(
       `\n  - Status: ${kafkaAvailable ? ConnectedState.Success : ConnectedState.None}`,
     );
 
-  // Update this if/when we migrate LOCAL connections to DIRECT
-  // https://github.com/confluentinc/vscode/issues/522
+  // TODO(shoup): update this once we migrate LOCAL connections to DIRECT
   // local_config only exists if the SR URI is set
   const config: LocalConfig | undefined = connection.spec.local_config;
   const schemaRegistryAvailable: boolean =

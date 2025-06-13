@@ -111,7 +111,7 @@ type Query {
   "Get all CCloud connections"
   ccloudConnections: [CCloudConnection]!
   "Get direct connection by ID"
-  directConnectionById(id: String!): DirectConnection
+  directConnectionById(connectionID: String): DirectConnection!
   "Get all direct connections"
   directConnections: [DirectConnection]!
   "Find CCloud Kafka clusters using a connection and various criteria"
