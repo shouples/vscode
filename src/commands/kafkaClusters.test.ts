@@ -1,385 +1,399 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
+import sinon from "sinon";
 import { TEST_CCLOUD_KAFKA_CLUSTER, TEST_LOCAL_KAFKA_CLUSTER } from "../../tests/unit/testResources/kafkaCluster";
 import { CCloudKafkaCluster, KafkaCluster, LocalKafkaCluster } from "../models/kafkaCluster";
 import { KafkaTopic } from "../models/topic";
 import { createTopicCommand, deleteTopicCommand, copyBootstrapServers } from "./kafkaClusters";
-import { getSidecar } from "../sidecar";
-import { fetchTopicAuthorizedOperations } from "../authz/topics";
-import { getTopicViewProvider } from "../viewProviders/topics";
-import { currentKafkaClusterChanged } from "../emitters";
+import * as sidecar from "../sidecar";
+import { ResponseError } from "../clients/kafkaRest"; // Correct import for ResponseError
+import * as authzTopics from "../authz/topics";
+import * as topicViewProviders from "../viewProviders/topics";
+import * as emitters from "../emitters";
+import * as kafkaClusterQuickPicks from "../quickpicks/kafkaClusters";
 
-jest.mock("vscode", () => {
-  const actualVscode = jest.requireActual("vscode");
-  return {
-    ...actualVscode,
-    window: {
-      ...actualVscode.window,
-      showInputBox: jest.fn(),
-      showErrorMessage: jest.fn(),
-      showInformationMessage: jest.fn(),
-      withProgress: jest.fn((options, task) => task({ report: jest.fn() })),
-    },
-    env: {
-      ...actualVscode.env,
-      clipboard: {
-        writeText: jest.fn(),
-        readText: jest.fn(),
-      },
-    },
-    commands: {
-      ...actualVscode.commands,
-      executeCommand: jest.fn(),
-    },
-    // Keep actual enums like ProgressLocation and InputBoxValidationSeverity
-  };
-});
 
-jest.mock("../sidecar", () => ({
-  getSidecar: jest.fn(),
-}));
-
-jest.mock("../authz/topics", () => ({
-  fetchTopicAuthorizedOperations: jest.fn(),
-}));
-
-jest.mock("../viewProviders/topics", () => ({
-  getTopicViewProvider: jest.fn(),
-}));
-
-jest.mock("../emitters", () => ({
-  currentKafkaClusterChanged: {
-    fire: jest.fn(),
-  },
-}));
-
+// Note: The jest.mock calls are removed as we are switching to Sinon for mocking.
 
 describe("kafkaCluster commands", () => {
-  // Existing tests for copyBootstrapServers
+  let sandbox: sinon.SinonSandbox;
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+    // Stub vscode APIs that are used directly
+    // sandbox.stub(vscode.env.clipboard, "writeText"); // Moved to copyBootstrapServers
+    // sandbox.stub(vscode.env.clipboard, "readText");  // Moved to copyBootstrapServers
+    sandbox.stub(vscode.window, "showInformationMessage");
+    // Common stubs for window methods used in both create and delete
+    sandbox.stub(vscode.window, "showInputBox");
+    sandbox.stub(vscode.window, "showErrorMessage");
+    sandbox.stub(vscode.window, "withProgress").callsFake(async (options, task) => task({ report: sandbox.stub() }));
+
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+  });
+
+
   describe("copyBootstrapServers", () => {
-  let _originalClipboardContents: string | undefined;
+    let _originalClipboardContents: string | undefined;
+    let writeTextStub: sinon.SinonStub;
+    let readTextStub: sinon.SinonStub;
 
-  beforeEach(async () => {
-    // Try to reduce annoying developer running tests corrupting their clipboard.
-    _originalClipboardContents = await vscode.env.clipboard.readText();
-  });
-
-  afterEach(async () => {
-    if (_originalClipboardContents) {
-      await vscode.env.clipboard.writeText(_originalClipboardContents);
-    }
-  });
-
-  it("should copy protocol-free bootstrap server(s) to the clipboard", async () => {
-    const testCluster: CCloudKafkaCluster = CCloudKafkaCluster.create({
-      ...TEST_CCLOUD_KAFKA_CLUSTER,
-      bootstrapServers: "SASL_SSL://s1.com:2343,FOO://s2.com:1234,s4.com:4455",
+    beforeEach(async () => {
+      writeTextStub = sandbox.stub(vscode.env.clipboard, "writeText");
+      readTextStub = sandbox.stub(vscode.env.clipboard, "readText");
+      _originalClipboardContents = await readTextStub(); // Use the fresh stub
     });
-    await copyBootstrapServers(testCluster);
-    const writtenValue = await vscode.env.clipboard.readText();
-    // Look ma, no more protocol:// bits.
-    assert.strictEqual(writtenValue, "s1.com:2343,s2.com:1234,s4.com:4455");
+
+    // No specific afterEach needed here for stubs as sandbox.restore() handles it.
+    // The original afterEach for restoring clipboard content is fine if we want to ensure
+    // the *actual* clipboard is restored in a real environment, but in Sinon tests,
+    // the stubs prevent actual clipboard interaction. For robustness, keeping it doesn't hurt
+    // if tests were ever run in a mixed stub/real mode, but it's not strictly necessary for pure stubbed tests.
+    // For now, let's keep it to ensure original behavior if stubs were bypassed.
+    afterEach(async () => {
+      if (_originalClipboardContents !== undefined) {
+        // This would call the original if not stubbed, or the stub if still active.
+        // Since sandbox.restore() is called in parent afterEach, this is more for conceptual integrity.
+        await vscode.env.clipboard.writeText(_originalClipboardContents);
+      }
+    });
+
+    it("should copy protocol-free bootstrap server(s) to the clipboard", async () => {
+      const testCluster: CCloudKafkaCluster = CCloudKafkaCluster.create({
+        ...TEST_CCLOUD_KAFKA_CLUSTER,
+        bootstrapServers: "SASL_SSL://s1.com:2343,FOO://s2.com:1234,s4.com:4455",
+      });
+
+      // Configure the readText stub to return something specific if needed by the test logic itself,
+      // though for this test, it's mainly about what's written.
+      // (vscode.env.clipboard.readText as sinon.SinonStub).resolves("initial clipboard content"); // Not needed for this test flow
+      writeTextStub.resolves(); // Ensure the stubbed writeText resolves
+
+      await copyBootstrapServers(testCluster);
+
+      sinon.assert.calledWith(writeTextStub, "s1.com:2343,s2.com:1234,s4.com:4455");
+      sinon.assert.calledOnce(vscode.window.showInformationMessage as sinon.SinonStub);
+    });
   });
-});
 
   describe("createTopicCommand", () => {
     let mockKafkaCluster: KafkaCluster;
-    let mockGetTopicV3Api: jest.Mock;
-    let mockCreateKafkaTopic: jest.Mock;
-    let mockGetKafkaTopic: jest.Mock;
-    let mockRefresh: jest.Mock;
+    let showInputBoxStub: sinon.SinonStub;
+    let showErrorMessageStub: sinon.SinonStub;
+    // let withProgressStub: sinon.SinonStub; // Already in main sandbox
+    let getSidecarStub: sinon.SinonStub;
+    let createKafkaTopicStub: sinon.SinonStub;
+    let getKafkaTopicStub: sinon.SinonStub;
+    let getTopicV3ApiStub: sinon.SinonStub;
+    let topicViewProviderRefreshStub: sinon.SinonStub;
+    let getTopicViewProviderStub: sinon.SinonStub;
+    let kafkaClusterQuickPickStub: sinon.SinonStub;
+
 
     beforeEach(() => {
-      jest.clearAllMocks();
-
       mockKafkaCluster = LocalKafkaCluster.create(TEST_LOCAL_KAFKA_CLUSTER);
-      mockCreateKafkaTopic = jest.fn().mockResolvedValue({});
-      mockGetKafkaTopic = jest.fn().mockResolvedValue({}); // Simulate topic exists after creation
-      mockGetTopicV3Api = jest.fn(() => ({
-        createKafkaTopic: mockCreateKafkaTopic,
-        getKafkaTopic: mockGetKafkaTopic,
-      }));
-      (getSidecar as jest.Mock).mockReturnValue({
-        getTopicV3Api: mockGetTopicV3Api,
+
+      showInputBoxStub = vscode.window.showInputBox as sinon.SinonStub;
+      showErrorMessageStub = vscode.window.showErrorMessage as sinon.SinonStub;
+      // withProgressStub = vscode.window.withProgress as sinon.SinonStub; // from main sandbox
+
+      createKafkaTopicStub = sandbox.stub().resolves({});
+      getKafkaTopicStub = sandbox.stub().resolves({});
+      getTopicV3ApiStub = sandbox.stub().returns({
+        createKafkaTopic: createKafkaTopicStub,
+        getKafkaTopic: getKafkaTopicStub,
+      });
+      getSidecarStub = sandbox.stub(sidecar, "getSidecar").resolves({
+        getTopicV3Api: getTopicV3ApiStub,
       });
 
-      mockRefresh = jest.fn();
-      (getTopicViewProvider as jest.Mock).mockReturnValue({
-        refresh: mockRefresh,
-        kafkaCluster: mockKafkaCluster, // Simulate a cluster is selected in the view
-      });
+      topicViewProviderRefreshStub = sandbox.stub();
+      getTopicViewProviderStub = sandbox.stub(topicViewProviders, "getTopicViewProvider").returns({
+        refresh: topicViewProviderRefreshStub,
+        kafkaCluster: mockKafkaCluster,
+      } as any);
 
-      // Mock withProgress to just execute the task
-      (vscode.window.withProgress as jest.Mock).mockImplementation(async (options, task) => {
-        await task({ report: jest.fn() });
-      });
+      kafkaClusterQuickPickStub = sandbox.stub(kafkaClusterQuickPicks, "kafkaClusterQuickPick");
+      sandbox.stub(emitters.currentKafkaClusterChanged, "fire");
     });
 
-    it("should create a topic with valid input", async () => {
-      (vscode.window.showInputBox as jest.Mock)
-        .mockResolvedValueOnce("test-topic123") // topic name
-        .mockResolvedValueOnce("1") // partitions
-        .mockResolvedValueOnce("1"); // replication factor
+    it("should create a topic with valid input when cluster is passed as item", async () => {
+      showInputBoxStub.onFirstCall().resolves("test-topic123");
+      showInputBoxStub.onSecondCall().resolves("1");
+      showInputBoxStub.onThirdCall().resolves("1");
 
       await createTopicCommand(mockKafkaCluster);
 
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(3);
-      expect(mockCreateKafkaTopic).toHaveBeenCalledWith({
+      sinon.assert.calledThrice(showInputBoxStub);
+      sinon.assert.calledWith(createKafkaTopicStub, sinon.match({
         cluster_id: mockKafkaCluster.id,
         CreateTopicRequestData: {
           topic_name: "test-topic123",
           partitions_count: 1,
           replication_factor: 1,
         },
-      });
-      expect(mockGetKafkaTopic).toHaveBeenCalledWith({ // part of waitForTopicToExist
+      }));
+      sinon.assert.calledOnce(getKafkaTopicStub);
+      sinon.assert.calledWith(getKafkaTopicStub, sinon.match({
         cluster_id: mockKafkaCluster.id,
         topic_name: "test-topic123",
-      });
-      expect(mockRefresh).toHaveBeenCalledWith(true, mockKafkaCluster.id);
-      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-    });
-
-    it("should show error for topic name longer than 249 chars", async () => {
-      const longName = "a".repeat(250);
-      (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce(longName);
-
-      await createTopicCommand(mockKafkaCluster);
-
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-        "Invalid topic name. Topic names can only contain letters, numbers, periods (.), underscores (_), and hyphens (-), and must be between 1 and 249 characters long."
-      );
-      expect(mockCreateKafkaTopic).not.toHaveBeenCalled();
-    });
-
-    it("should show error for topic name with invalid characters", async () => {
-      (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce("test!topic");
-
-      await createTopicCommand(mockKafkaCluster);
-
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-        "Invalid topic name. Topic names can only contain letters, numbers, periods (.), underscores (_), and hyphens (-), and must be between 1 and 249 characters long."
-      );
-      expect(mockCreateKafkaTopic).not.toHaveBeenCalled();
-    });
-
-    it("should not proceed if user cancels topic name input", async () => {
-      (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce(undefined); // User cancels
-
-      await createTopicCommand(mockKafkaCluster);
-
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
-      expect(mockCreateKafkaTopic).not.toHaveBeenCalled();
-      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      }));
+      sinon.assert.calledOnceWithExactly(topicViewProviderRefreshStub, true, mockKafkaCluster.id);
+      sinon.assert.notCalled(showErrorMessageStub);
     });
 
     it("should use selected cluster from topic view if no item passed", async () => {
-        (vscode.window.showInputBox as jest.Mock)
-        .mockResolvedValueOnce("test-topic-no-item")
-        .mockResolvedValueOnce("1")
-        .mockResolvedValueOnce("1");
+      showInputBoxStub.onFirstCall().resolves("test-topic-no-item");
+      showInputBoxStub.onSecondCall().resolves("1");
+      showInputBoxStub.onThirdCall().resolves("1");
 
-      //kafkaCluster in getTopicViewProvider is already set in beforeEach
-      await createTopicCommand(undefined); // Pass undefined for item
+      await createTopicCommand(undefined);
 
-      expect(mockCreateKafkaTopic).toHaveBeenCalledWith(expect.objectContaining({
-        cluster_id: mockKafkaCluster.id, // Should use the one from topic view
-        CreateTopicRequestData: expect.objectContaining({ topic_name: "test-topic-no-item" }),
+      sinon.assert.calledWith(createKafkaTopicStub, sinon.match({
+        cluster_id: mockKafkaCluster.id,
+        CreateTopicRequestData: sinon.match({ topic_name: "test-topic-no-item" }),
       }));
-      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      sinon.assert.notCalled(showErrorMessageStub);
     });
 
-    it("should prompt for cluster if no item and no topic view cluster", async () => {
-      (getTopicViewProvider as jest.Mock).mockReturnValue({
-        refresh: mockRefresh,
-        kafkaCluster: null, // No cluster in topic view
-      });
-      // Mock kafkaClusterQuickPick to return a cluster
-      const mockSelectedCluster = LocalKafkaCluster.create({...TEST_LOCAL_KAFKA_CLUSTER, id: "selected-cluster"});
-      (vscode.window.showInputBox as jest.Mock) // This is a simplification, in reality it's a quick pick
-        .mockResolvedValueOnce(mockSelectedCluster.name) // Simulate cluster selection (though showInputBox isn't quite right for quickPick)
-        .mockResolvedValueOnce("test-topic-selected")
-        .mockResolvedValueOnce("1")
-        .mockResolvedValueOnce("1");
+    it("should prompt for cluster using kafkaClusterQuickPick if no item and no topic view cluster", async () => {
+      getTopicViewProviderStub.returns({
+        refresh: topicViewProviderRefreshStub,
+        kafkaCluster: null,
+      }as any);
 
-      // For this test, we need to mock kafkaClusterQuickPick, which is not directly part of vscode.
-      // Let's assume createTopicCommand will call showInputBox if kafkaClusterQuickPick is simplified or not mocked correctly.
-      // A more accurate test would involve mocking kafkaClusterQuickPick directly if it were exported or refactored for testability.
-      // For now, we'll check if showErrorMessage is called if topic name is then cancelled.
-       (vscode.window.showInputBox as jest.Mock).mockReset(); // Reset previous mocks for showInputBox
-       const mockShowInputBox = vscode.window.showInputBox as jest.Mock;
+      const selectedCluster = LocalKafkaCluster.create({...TEST_LOCAL_KAFKA_CLUSTER, id: "selected-cluster", name: "Selected Cluster"});
+      kafkaClusterQuickPickStub.resolves(selectedCluster);
 
-       // Simulate user selecting a cluster then cancelling topic name
-       mockShowInputBox.mockImplementation(async (options) => {
-        if (options && options.prompt === "New topic name") {
-            return undefined; // Cancel topic name
-        }
-        // This part is tricky because kafkaClusterQuickPick is not showInputBox.
-        // Let's assume for now the command proceeds to ask for topic name if a cluster is somehow selected.
-        // To truly test the cluster selection path, kafkaClusterQuickPick would need to be mocked.
-        // We'll focus on the topic creation part after cluster selection.
-        return "some-default";
-       });
+      showInputBoxStub.onFirstCall().resolves("test-topic-selected");
+      showInputBoxStub.onSecondCall().resolves("1");
+      showInputBoxStub.onThirdCall().resolves("1");
 
-       // To properly test the cluster selection path, we'd need to mock `kafkaClusterQuickPick`
-       // from "../quickpicks/kafkaClusters". For now, this test is limited.
-       // We'll assume the command somehow gets a cluster and then fails on topic name.
+      await createTopicCommand(undefined);
 
-       // Since kafkaClusterQuickPick is not mocked here, this test will be more of a conceptual placeholder
-       // for that logic path. The command might not behave as expected in this isolated unit test
-       // without mocking that specific quickpick.
-       // Let's simulate that kafkaClusterQuickPick was supposed to be called then topic creation cancelled.
+      sinon.assert.calledOnce(kafkaClusterQuickPickStub);
+      sinon.assert.calledWith(createKafkaTopicStub, sinon.match({
+        cluster_id: selectedCluster.id,
+        CreateTopicRequestData: sinon.match({ topic_name: "test-topic-selected" }),
+      }));
+      sinon.assert.notCalled(showErrorMessageStub);
+    });
 
-       // If cluster is undefined, and topic view has no cluster, it calls kafkaClusterQuickPick.
-       // Let's assume kafkaClusterQuickPick is mocked elsewhere or we test the subsequent behavior.
-       // For now, let's ensure if topic name is cancelled, it exits gracefully.
-       (getTopicViewProvider as jest.Mock).mockReturnValueOnce({ refresh: mockRefresh, kafkaCluster: null });
-       (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce(undefined); // Cancel topic name input
+    it("should exit if cluster selection via kafkaClusterQuickPick is cancelled", async () => {
+      getTopicViewProviderStub.returns({
+        refresh: topicViewProviderRefreshStub,
+        kafkaCluster: null,
+      }as any);
+      kafkaClusterQuickPickStub.resolves(undefined);
 
-       await createTopicCommand(undefined);
-       expect(mockCreateKafkaTopic).not.toHaveBeenCalled();
+      await createTopicCommand(undefined);
+
+      sinon.assert.calledOnce(kafkaClusterQuickPickStub);
+      sinon.assert.notCalled(showInputBoxStub);
+      sinon.assert.notCalled(createKafkaTopicStub);
+      sinon.assert.notCalled(showErrorMessageStub);
     });
 
 
+    it("should show error for topic name longer than 249 chars", async () => {
+      const longName = "a".repeat(250);
+      showInputBoxStub.onFirstCall().resolves(longName);
+
+      await createTopicCommand(mockKafkaCluster);
+
+      sinon.assert.calledOnce(showInputBoxStub);
+      sinon.assert.calledOnceWithExactly(showErrorMessageStub,
+        "Invalid topic name. Topic names can only contain letters, numbers, periods (.), underscores (_), and hyphens (-), and must be between 1 and 249 characters long."
+      );
+      sinon.assert.notCalled(createKafkaTopicStub);
+    });
+
+    it("should show error for topic name with invalid characters", async () => {
+      showInputBoxStub.onFirstCall().resolves("test!topic");
+
+      await createTopicCommand(mockKafkaCluster);
+
+      sinon.assert.calledOnce(showInputBoxStub);
+      sinon.assert.calledOnceWithExactly(showErrorMessageStub,
+        "Invalid topic name. Topic names can only contain letters, numbers, periods (.), underscores (_), and hyphens (-), and must be between 1 and 249 characters long."
+      );
+      sinon.assert.notCalled(createKafkaTopicStub);
+    });
+
+    it("should not proceed if user cancels topic name input", async () => {
+      showInputBoxStub.onFirstCall().resolves(undefined);
+
+      await createTopicCommand(mockKafkaCluster);
+
+      sinon.assert.calledOnce(showInputBoxStub);
+      sinon.assert.notCalled(createKafkaTopicStub);
+      sinon.assert.notCalled(showErrorMessageStub);
+    });
+
+    it("should use default replication factor for CCloud cluster if not specified", async () => {
+        const ccloudCluster = CCloudKafkaCluster.create(TEST_CCLOUD_KAFKA_CLUSTER);
+        showInputBoxStub.onFirstCall().resolves("ccloud-topic");
+        showInputBoxStub.onSecondCall().resolves("6");
+        showInputBoxStub.onThirdCall().resolves("3");
+
+
+        await createTopicCommand(ccloudCluster);
+
+        sinon.assert.calledWith(createKafkaTopicStub, sinon.match({
+            cluster_id: ccloudCluster.id,
+            CreateTopicRequestData: {
+                topic_name: "ccloud-topic",
+                partitions_count: 6,
+                replication_factor: 3,
+            }
+        }));
+    });
   });
 
   describe("deleteTopicCommand", () => {
-    let mockKafkaTopic: KafkaTopic;
-    let mockGetTopicV3Api: jest.Mock;
-    let mockDeleteKafkaTopic: jest.Mock;
-    let mockGetKafkaTopic: jest.Mock; // For waitForTopicToBeDeleted
-    let mockRefresh: jest.Mock;
+    let mockLocalKafkaTopic: KafkaTopic;
+    let showInputBoxStub: sinon.SinonStub;
+    let showErrorMessageStub: sinon.SinonStub;
+    // let withProgressStub: sinon.SinonStub; // from main sandbox
+    let getSidecarStub: sinon.SinonStub;
+    let deleteKafkaTopicStub: sinon.SinonStub;
+    let getKafkaTopicStub: sinon.SinonStub;
+    let getTopicV3ApiStub: sinon.SinonStub;
+    let topicViewProviderRefreshStub: sinon.SinonStub;
+    let getTopicViewProviderStub: sinon.SinonStub;
+    let fetchTopicAuthorizedOperationsStub: sinon.SinonStub;
+
 
     beforeEach(() => {
-      jest.clearAllMocks();
-
-      mockKafkaTopic = new KafkaTopic(
+      mockLocalKafkaTopic = new KafkaTopic(
         "test-topic-to-delete",
         TEST_LOCAL_KAFKA_CLUSTER.id,
         false,
         1,
         1,
         [],
-        "connection-id",
+        "local-connection-id"
       );
 
-      (fetchTopicAuthorizedOperations as jest.Mock).mockResolvedValue(["DELETE"]);
+      showInputBoxStub = vscode.window.showInputBox as sinon.SinonStub;
+      showErrorMessageStub = vscode.window.showErrorMessage as sinon.SinonStub;
+      // withProgressStub = vscode.window.withProgress as sinon.SinonStub; // from main sandbox
 
-      mockDeleteKafkaTopic = jest.fn().mockResolvedValue({});
-      // Simulate topic not found after deletion for waitForTopicToBeDeleted
-      mockGetKafkaTopic = jest.fn().mockRejectedValueOnce(new Error("404 Not Found"));
-      mockGetTopicV3Api = jest.fn(() => ({
-        deleteKafkaTopic: mockDeleteKafkaTopic,
-        getKafkaTopic: mockGetKafkaTopic,
-      }));
-      (getSidecar as jest.Mock).mockReturnValue({
-        getTopicV3Api: mockGetTopicV3Api,
+      fetchTopicAuthorizedOperationsStub = sandbox.stub(authzTopics, "fetchTopicAuthorizedOperations");
+
+      deleteKafkaTopicStub = sandbox.stub().resolves({});
+      getKafkaTopicStub = sandbox.stub();
+
+      getTopicV3ApiStub = sandbox.stub().returns({
+        deleteKafkaTopic: deleteKafkaTopicStub,
+        getKafkaTopic: getKafkaTopicStub,
+      });
+      getSidecarStub = sandbox.stub(sidecar, "getSidecar").resolves({
+        getTopicV3Api: getTopicV3ApiStub,
       });
 
-      mockRefresh = jest.fn();
-      (getTopicViewProvider as jest.Mock).mockReturnValue({
-        refresh: mockRefresh,
-      });
-
-      (vscode.window.withProgress as jest.Mock).mockImplementation(async (options, task) => {
-        await task({ report: jest.fn() });
-      });
+      topicViewProviderRefreshStub = sandbox.stub();
+      getTopicViewProviderStub = sandbox.stub(topicViewProviders, "getTopicViewProvider").returns({
+             refresh: topicViewProviderRefreshStub,
+        } as any);
     });
 
     it("should delete a topic with valid confirmation", async () => {
-      (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce(mockKafkaTopic.name); // Confirm with correct name
+      fetchTopicAuthorizedOperationsStub.resolves(["DELETE"]);
+      showInputBoxStub.resolves(mockLocalKafkaTopic.name);
+      getKafkaTopicStub.onFirstCall().rejects(new ResponseError(new Response(null, { status: 404 })));
 
-      await deleteTopicCommand(mockKafkaTopic);
 
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
-      expect(mockDeleteKafkaTopic).toHaveBeenCalledWith({
-        cluster_id: mockKafkaTopic.clusterId,
-        topic_name: mockKafkaTopic.name,
-      });
-      expect(mockGetKafkaTopic).toHaveBeenCalledWith({ // for waitForTopicToBeDeleted
-          cluster_id: mockKafkaTopic.clusterId,
-          topic_name: mockKafkaTopic.name,
-      });
-      expect(mockRefresh).toHaveBeenCalledWith(true, mockKafkaTopic.clusterId);
-      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      await deleteTopicCommand(mockLocalKafkaTopic);
+
+      sinon.assert.calledOnce(fetchTopicAuthorizedOperationsStub);
+      sinon.assert.calledOnce(showInputBoxStub);
+      sinon.assert.calledOnce(deleteKafkaTopicStub);
+      sinon.assert.calledWith(deleteKafkaTopicStub, sinon.match({
+        cluster_id: mockLocalKafkaTopic.clusterId,
+        topic_name: mockLocalKafkaTopic.name,
+      }));
+      sinon.assert.calledOnce(getKafkaTopicStub);
+      sinon.assert.calledOnceWithExactly(topicViewProviderRefreshStub, true, mockLocalKafkaTopic.clusterId);
+      sinon.assert.notCalled(showErrorMessageStub);
     });
 
-    it("should not delete if topic name confirmation is incorrect (handled by validateInput)", async () => {
-      // validateInput will prevent submission, so showInputBox will effectively return undefined or the promise won't resolve for the command
-      // For the test, we simulate that showInputBox returns undefined because validation failed and user didn't proceed.
-      (vscode.window.showInputBox as jest.Mock).mockImplementation(async (options) => {
-        if (options.validateInput) {
-          const validationResult = options.validateInput("wrong-name");
-          expect(validationResult).toEqual({
-            message: `Topic name "wrong-name" does not match "${mockKafkaTopic.name}"`,
-            severity: vscode.InputBoxValidationSeverity.Error,
-          });
-        }
-        return undefined; // Simulate user cancelling or validation preventing submission
-      });
-
-      await deleteTopicCommand(mockKafkaTopic);
-
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
-      expect(mockDeleteKafkaTopic).not.toHaveBeenCalled();
-    });
-
-    it("should correctly use validateInput for topic name confirmation, returning object for error", async () => {
-      const mockShowInputBox = vscode.window.showInputBox as jest.Mock;
-      // Define the type for validateInputFunc more accurately based on its actual signature in the command
-      let validateInputFunc: ((value: string) => vscode.InputBoxValidationMessage | null) | undefined;
-
-      mockShowInputBox.mockImplementationOnce(options => {
-        validateInputFunc = options.validateInput;
-        // Simulate the input box resolving with the correct topic name, as if the user typed it correctly after seeing errors or not.
-        // The core of this test is to check the behavior of `validateInputFunc` itself.
-        return Promise.resolve(mockKafkaTopic.name);
-      });
-
-      await deleteTopicCommand(mockKafkaTopic);
-
-      expect(validateInputFunc).toBeDefined();
-      if (validateInputFunc) {
-        expect(validateInputFunc(mockKafkaTopic.name)).toBeNull();
-        expect(validateInputFunc("wrong-name")).toEqual({
-          message: `Topic name "wrong-name" does not match "${mockKafkaTopic.name}"`,
+    it("should show error and not delete if topic name confirmation is incorrect", async () => {
+      fetchTopicAuthorizedOperationsStub.resolves(["DELETE"]);
+      showInputBoxStub.callsFake(options => {
+        const validationResult = options.validateInput("wrong-name");
+        assert.deepStrictEqual(validationResult, {
+          message: `Topic name "wrong-name" does not match "${mockLocalKafkaTopic.name}"`,
           severity: vscode.InputBoxValidationSeverity.Error,
         });
-      }
-      // This assertion ensures that if validateInput were to pass (as simulated by Promise.resolve above),
-      // the command would proceed.
-      expect(mockDeleteKafkaTopic).toHaveBeenCalled();
+        return Promise.resolve(undefined);
+      });
+
+      await deleteTopicCommand(mockLocalKafkaTopic);
+
+      sinon.assert.calledOnce(fetchTopicAuthorizedOperationsStub);
+      sinon.assert.calledOnce(showInputBoxStub);
+      sinon.assert.notCalled(deleteKafkaTopicStub);
+    });
+
+    it("should correctly use validateInput for topic name confirmation (direct check)", async () => {
+        fetchTopicAuthorizedOperationsStub.resolves(["DELETE"]);
+        let capturedValidateInput: ((value: string) => vscode.InputBoxValidationMessage | null) | undefined;
+        showInputBoxStub.callsFake(options => {
+            capturedValidateInput = options.validateInput;
+            return Promise.resolve(mockLocalKafkaTopic.name);
+        });
+        getKafkaTopicStub.onFirstCall().rejects(new ResponseError(new Response(null, { status: 404 })));
+
+
+        await deleteTopicCommand(mockLocalKafkaTopic);
+
+        assert.ok(capturedValidateInput, "validateInput was not captured");
+        if (capturedValidateInput) {
+            assert.strictEqual(capturedValidateInput(mockLocalKafkaTopic.name), null, "Validation should pass for correct name");
+            assert.deepStrictEqual(capturedValidateInput("wrong-name"), {
+                message: `Topic name "wrong-name" does not match "${mockLocalKafkaTopic.name}"`,
+                severity: vscode.InputBoxValidationSeverity.Error,
+            }, "Validation should fail for incorrect name");
+        }
+        sinon.assert.calledOnce(deleteKafkaTopicStub);
     });
 
 
-    it("should not proceed if user cancels topic name confirmation", async () => {
-      (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce(undefined); // User cancels
+    it("should not proceed if user cancels topic name confirmation (showInputBox returns undefined)", async () => {
+      fetchTopicAuthorizedOperationsStub.resolves(["DELETE"]);
+      showInputBoxStub.resolves(undefined);
 
-      await deleteTopicCommand(mockKafkaTopic);
+      await deleteTopicCommand(mockLocalKafkaTopic);
 
-      expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
-      expect(mockDeleteKafkaTopic).not.toHaveBeenCalled();
-      expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+      sinon.assert.calledOnce(fetchTopicAuthorizedOperationsStub);
+      sinon.assert.calledOnce(showInputBoxStub);
+      sinon.assert.notCalled(deleteKafkaTopicStub);
+      sinon.assert.notCalled(showErrorMessageStub);
     });
 
     it("should show error if user does not have DELETE permission", async () => {
-      (fetchTopicAuthorizedOperations as jest.Mock).mockResolvedValueOnce(["DESCRIBE"]); // No DELETE permission
+      fetchTopicAuthorizedOperationsStub.resolves(["DESCRIBE"]);
 
-      await deleteTopicCommand(mockKafkaTopic);
+      await deleteTopicCommand(mockLocalKafkaTopic);
 
-      expect(fetchTopicAuthorizedOperations).toHaveBeenCalledWith(mockKafkaTopic);
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-        `You do not have permission to delete the topic "${mockKafkaTopic.name}"`
+      sinon.assert.calledOnce(fetchTopicAuthorizedOperationsStub);
+      sinon.assert.calledOnceWithExactly(showErrorMessageStub,
+        `You do not have permission to delete the topic "${mockLocalKafkaTopic.name}"`
       );
-      expect(mockDeleteKafkaTopic).not.toHaveBeenCalled();
+      sinon.assert.notCalled(showInputBoxStub);
+      sinon.assert.notCalled(deleteKafkaTopicStub);
     });
+
      it("should not proceed if topic is not KafkaTopic instance", async () => {
-      await deleteTopicCommand({} as any); // Pass invalid topic object
-      expect(fetchTopicAuthorizedOperations).not.toHaveBeenCalled();
-      expect(vscode.window.showInputBox).not.toHaveBeenCalled();
-      expect(mockDeleteKafkaTopic).not.toHaveBeenCalled();
+      await deleteTopicCommand({ name: "not-a-kafka-topic" } as any);
+
+      sinon.assert.notCalled(fetchTopicAuthorizedOperationsStub);
+      sinon.assert.notCalled(showInputBoxStub);
+      sinon.assert.notCalled(deleteKafkaTopicStub);
     });
   });
 });

@@ -38,7 +38,8 @@ async function selectKafkaClusterCommand(cluster?: KafkaCluster) {
   vscode.commands.executeCommand("confluent-topics.focus");
 }
 
-async function deleteTopicCommand(topic: KafkaTopic) {
+// Exported for testing
+export async function deleteTopicCommand(topic: KafkaTopic) {
   if (!(topic instanceof KafkaTopic)) {
     return;
   }
@@ -109,7 +110,8 @@ async function deleteTopicCommand(topic: KafkaTopic) {
   );
 }
 
-async function createTopicCommand(item?: KafkaCluster) {
+// Exported for testing
+export async function createTopicCommand(item?: KafkaCluster) {
   const topicsViewCluster = getTopicViewProvider().kafkaCluster;
 
   let cluster: KafkaCluster | undefined;
@@ -284,6 +286,7 @@ async function waitForTopicToBeDeleted(
   throw new Error(`${topicKind} topic "${topicName}" was not deleted within ${timeoutMs}ms`);
 }
 
+// Exported for testing
 export async function copyBootstrapServers(item: KafkaCluster) {
   const bootstrapServers = item.bootstrapServers;
   if (!bootstrapServers) {
