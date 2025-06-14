@@ -17,6 +17,8 @@ import { getTopicViewProvider } from "../viewProviders/topics";
 
 const logger = new Logger("commands.kafkaClusters");
 
+const TOPIC_NAME_REGEX = /^[a-zA-Z0-9._-]{1,249}$/;
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function renameKafkaClusterCommand(item?: CCloudKafkaCluster | undefined) {
   // TODO: implement this once the sidecar supports mutations via GraphQL
@@ -57,15 +59,17 @@ async function deleteTopicCommand(topic: KafkaTopic) {
     title: confirmMessage,
     prompt: "Enter the name of the topic to confirm",
     ignoreFocusOut: true,
+    validateInput: (value: string): vscode.InputBoxValidationMessage | null => {
+      if (value !== topic.name) {
+        return {
+          message: `Topic name "${value}" does not match "${topic.name}"`,
+          severity: vscode.InputBoxValidationSeverity.Error,
+        };
+      }
+      return null;
+    },
   });
   if (!topicName) {
-    return;
-  }
-
-  if (topicName !== topic.name) {
-    const errorMessage = `Topic name "${topicName}" does not match "${topic.name}"`;
-    logger.error(errorMessage);
-    vscode.window.showErrorMessage(errorMessage);
     return;
   }
 
@@ -137,6 +141,13 @@ async function createTopicCommand(item?: KafkaCluster) {
     ignoreFocusOut: true,
   });
   if (!topicName) {
+    return;
+  }
+
+  if (!TOPIC_NAME_REGEX.test(topicName)) {
+    vscode.window.showErrorMessage(
+      "Invalid topic name. Topic names can only contain letters, numbers, periods (.), underscores (_), and hyphens (-), and must be between 1 and 249 characters long."
+    );
     return;
   }
 
