@@ -766,7 +766,7 @@ export function e2eRun(done) {
     "test",
     "-c",
     "tests/e2e/playwright.config.ts",
-    "tests/e2e",
+    // "tests/e2e", // Removed this line
     ...(testFilter ? ["-g", testFilter] : []),
   ];
   console.log("Running command: npx", command.join(" "));

@@ -1,5 +1,4 @@
-import { FrameLocator } from "@playwright/test";
-import { test } from "vscode-test-playwright";
+import { FrameLocator, test } from "@playwright/test";
 import { openConfluentExtension } from "./utils/confluent";
 import { login } from "./utils/confluentCloud";
 import {
