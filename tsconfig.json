@@ -16,9 +16,7 @@
         "tadaOutputLocation": "./src/graphql/sidecarGraphQL.d.ts"
       }
     ],
-    "paths": {
-      "vscode-test-playwright": ["./node_modules/vscode-test-playwright/dist"]
-    }
+    "paths": {}
   },
   "exclude": ["openapi-ts.config.ts"]
 }

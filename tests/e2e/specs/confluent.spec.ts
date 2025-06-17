@@ -1,4 +1,4 @@
-import { test } from "vscode-test-playwright";
+import { test } from "../vscodeTest";
 
 import { openConfluentExtension } from "./utils/confluent";
 import { login } from "./utils/confluentCloud";

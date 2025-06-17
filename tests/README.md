@@ -108,8 +108,10 @@ tests.
 
 #### Getting familiar with the libraries we use
 
-1. [`vscode-test-playwright`](https://github.com/ruifigueira/vscode-test-playwright/) -- the main
-   library we use to run the Playwright tests in a VS Code Electron instance.
+1. [`@playwright/test`](https://playwright.dev/) and
+   [`@vscode/test-electron`](https://github.com/microsoft/vscode-test-electron)
+   -- these libraries are used together to launch a VS Code instance and run the
+   Playwright tests.
 
    Here are some of the key features that the library provides (taken from its README):
 
@@ -119,9 +121,6 @@ tests.
    - Captures detailed information about test execution, including screenshots, network requests,
      and console logs.
 
-   See
-   [here](https://github.com/ruifigueira/vscode-test-playwright/blob/48b0eeb60c9e6bec3b77df032707155daffa8d74/src/index.ts#L24-L31)
-   for the list of test fixtures offered by the library.
 
 1. [`electron-playwright-helpers`](https://github.com/spaceagetv/electron-playwright-helpers?tab=readme-ov-file#functions)
    -- like the name suggests, it offers useful helpers to stub the Electron dialog windows among
@@ -143,7 +142,7 @@ To create a new E2E test:
 1. Use this basic test structure as a starting point:
 
    ```typescript
-   import { test } from "vscode-test-playwright";
+   import { test } from "../vscodeTest";
    import { openConfluentExtension } from "./utils/confluent";
    import { expect } from "@playwright/test";
 
@@ -178,13 +177,13 @@ To create a new E2E test:
 
 1. If you're testing a Webview iframe, **make sure to set the `data-testid` attribute** on the
    elements you're testing. This makes it _much_ easier to locate the elements from your test code.
-1. **The [`tests`](https://github.com/ruifigueira/vscode-test-playwright/tree/main/tests) directory
-   in the vscode-test-playwright repository is a good reference** if you're looking for examples of
-   how to use the library. For instance, here's a
-   [test](https://github.com/ruifigueira/vscode-test-playwright/blob/main/tests/integration.spec.ts#L11-L18)
-   that demonstrates testing Webview iframes in the Electron window. This proved mighty useful for
-   testing the [Flink Statement Results Viewer](./e2e/specs/flinkStatement.spec.ts#L58) which is
-   implemented as a Webview iframe.
+1. The
+   [`playwright-vscode` repository](https://github.com/microsoft/playwright-vscode)
+   offers helpful examples of interacting with VS Code through Playwright. It
+   includes tests that exercise Webview iframes, which proved useful when
+   testing the
+   [Flink Statement Results Viewer](./e2e/specs/flinkStatement.spec.ts#L58) that
+   is implemented as a Webview iframe.
 1. If you haven't changed anything in the production code in the `src` directory, you don't have to
    bundle a new VSIX each time while iterating on the tests. **Use `gulp e2eRun` in place of
    `gulp e2e` to run the tests to bypass the bundling step.**
