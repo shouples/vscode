@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { InMemoryMemento } from "../stubs/inMemoryMemento";
 import { KafkaTopicOperation } from "../../src/authz/types";
 import { TopicData, TopicDataFromJSON } from "../../src/clients/kafkaRest/models";
 import { ResponseError } from "../../src/clients/sidecar";
@@ -51,6 +52,9 @@ export async function getTestExtensionContext(
   const extension = await getAndActivateExtension(id);
   // this only works because we explicitly return the ExtensionContext in our activate() function
   const context = extension.exports;
+  if (process.env.CI === "true") {
+    (context as any).workspaceState = new InMemoryMemento();
+  }
   setExtensionContext(context);
   return context;
 }
