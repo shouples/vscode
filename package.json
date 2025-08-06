@@ -448,6 +448,18 @@
         "category": "Confluent: Flink Artifacts"
       },
       {
+        "command": "confluent.artifacts.view-mode.udfs",
+        "icon": "$(symbol-function)",
+        "title": "View UDFs",
+        "category": "Confluent: Flink Artifacts"
+      },
+      {
+        "command": "confluent.artifacts.view-mode.artifacts",
+        "icon": "$(folder-library)",
+        "title": "View Artifacts",
+        "category": "Confluent: Flink Artifacts"
+      },
+      {
         "command": "confluent.statements.refresh",
         "icon": "$(sync)",
         "title": "Refresh",
@@ -1521,6 +1533,16 @@
           "command": "confluent.artifacts.flink-compute-pool.select",
           "when": "view == confluent-flink-artifacts && confluent.ccloudConnectionAvailable && config.confluent.flink.enableFlinkArtifacts",
           "group": "navigation@1"
+        },
+        {
+          "command": "confluent.artifacts.view-mode.udfs",
+          "when": "view == confluent-flink-artifacts && confluent.ccloudConnectionAvailable && config.confluent.flink.enableFlinkArtifacts && confluent.flinkArtifactsViewMode == artifacts",
+          "group": "navigation@2"
+        },
+        {
+          "command": "confluent.artifacts.view-mode.artifacts",
+          "when": "view == confluent-flink-artifacts && confluent.ccloudConnectionAvailable && config.confluent.flink.enableFlinkArtifacts && confluent.flinkArtifactsViewMode == udfs",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

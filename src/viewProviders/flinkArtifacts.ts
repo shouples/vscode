@@ -1,16 +1,19 @@
-import { TreeDataProvider, TreeItem } from "vscode";
-import { ContextValues } from "../context/values";
+import { TreeDataProvider } from "vscode";
+import { ContextValues, setContextValue } from "../context/values";
 import { currentFlinkArtifactsPoolChanged } from "../emitters";
 import { isResponseError, logError } from "../errors";
 import { CCloudResourceLoader } from "../loaders";
 import { FlinkArtifact, FlinkArtifactTreeItem } from "../models/flinkArtifact";
 import { CCloudFlinkComputePool } from "../models/flinkComputePool";
+import { FlinkUdf, FlinkUdfTreeItem } from "../models/flinkUdf";
 import { showErrorNotificationWithButtons } from "../notifications";
-import { ParentedBaseViewProvider } from "./base";
+import { MultiModeViewProvider } from "./base";
+
+type FlinkArtifactsItem = FlinkArtifact | FlinkUdf;
 
 export class FlinkArtifactsViewProvider
-  extends ParentedBaseViewProvider<CCloudFlinkComputePool, FlinkArtifact>
-  implements TreeDataProvider<FlinkArtifact>
+  extends MultiModeViewProvider<CCloudFlinkComputePool, FlinkArtifactsItem>
+  implements TreeDataProvider<FlinkArtifactsItem>
 {
   readonly kind = "flinkArtifacts";
   loggerName = "viewProviders.flinkArtifacts";
@@ -18,15 +21,31 @@ export class FlinkArtifactsViewProvider
 
   parentResourceChangedEmitter = currentFlinkArtifactsPoolChanged;
   parentResourceChangedContextValue = ContextValues.flinkArtifactsPoolSelected;
-  private _artifacts: FlinkArtifact[] = [];
+  modeContextValue = ContextValues.flinkArtifactsViewMode;
 
-  getChildren(element?: FlinkArtifact): FlinkArtifact[] {
-    if (!this.computePool) {
-      return [];
-    }
-    return this.filterChildren(element, this._artifacts);
+  private _artifacts: FlinkArtifact[] = [];
+  private _udfs: FlinkUdf[] = [];
+
+  constructor() {
+    super();
+    this.defaultModeId = "artifacts";
+    this.currentModeId = this.defaultModeId;
+    void setContextValue(this.modeContextValue, this.currentModeId);
+
+    this.registerMode("artifacts", {
+      refresh: this.refreshArtifacts.bind(this),
+      getChildren: () => (!this.computePool ? [] : this._artifacts),
+      getTreeItem: (item) => new FlinkArtifactTreeItem(item as FlinkArtifact),
+    });
+
+    this.registerMode("udfs", {
+      refresh: this.refreshUdfs.bind(this),
+      getChildren: () => (!this.computePool ? [] : this._udfs),
+      getTreeItem: (item) => new FlinkUdfTreeItem(item as FlinkUdf),
+    });
   }
-  async refresh(): Promise<void> {
+
+  private async refreshArtifacts(): Promise<void> {
     this._artifacts = [];
 
     if (this.computePool) {
@@ -49,11 +68,15 @@ export class FlinkArtifactsViewProvider
         false,
       );
     }
-
-    this._onDidChangeTreeData.fire();
   }
-  getTreeItem(element: FlinkArtifact): TreeItem {
-    return new FlinkArtifactTreeItem(element);
+
+  private async refreshUdfs(): Promise<void> {
+    this._udfs = [];
+
+    if (this.computePool) {
+      this._onDidChangeTreeData.fire();
+      // TODO: Implement UDF loading
+    }
   }
 
   get computePool(): CCloudFlinkComputePool | null {

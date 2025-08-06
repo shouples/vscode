@@ -371,3 +371,64 @@ export abstract class ParentedBaseViewProvider<
     }
   }
 }
+
+export interface ViewMode<T> {
+  refresh(): Promise<void>;
+  getChildren(element?: T): T[];
+  getTreeItem(element: T): TreeItem;
+}
+
+export abstract class MultiModeViewProvider<
+  P extends EnvironmentedBaseViewProviderData,
+  T extends BaseViewProviderData,
+> extends ParentedBaseViewProvider<P, T> {
+  protected modes: Map<string, ViewMode<T>> = new Map();
+  protected currentModeId: string = "";
+  protected defaultModeId: string = "";
+  protected modeContextValue?: ContextValues;
+
+  protected registerMode(id: string, mode: ViewMode<T>): void {
+    this.modes.set(id, mode);
+  }
+
+  protected get currentMode(): ViewMode<T> {
+    const mode = this.modes.get(this.currentModeId);
+    if (!mode) {
+      throw new Error(`Unknown mode ${this.currentModeId}`);
+    }
+    return mode;
+  }
+
+  async setMode(id: string): Promise<void> {
+    if (!this.modes.has(id)) {
+      return;
+    }
+    this.currentModeId = id;
+    if (this.modeContextValue) {
+      await setContextValue(this.modeContextValue, id);
+    }
+    await this.refresh();
+  }
+
+  override async refresh(): Promise<void> {
+    await this.currentMode.refresh();
+    this._onDidChangeTreeData.fire();
+  }
+
+  getChildren(element?: T): T[] {
+    const children = this.currentMode.getChildren(element);
+    return this.filterChildren(element, children);
+  }
+
+  getTreeItem(element: T): TreeItem {
+    return this.currentMode.getTreeItem(element);
+  }
+
+  override async reset(): Promise<void> {
+    this.currentModeId = this.defaultModeId;
+    if (this.modeContextValue) {
+      await setContextValue(this.modeContextValue, this.currentModeId);
+    }
+    await super.reset();
+  }
+}
