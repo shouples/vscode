@@ -64,6 +64,8 @@ export enum ContextValues {
   flinkStatementsPoolSelected = "confluent.flinkStatementsPoolSelected",
   /** The user focused a Flink compute pool for the Flink Artifacts view. */
   flinkArtifactsPoolSelected = "confluent.flinkArtifactsPoolSelected",
+  /** Current mode of the Flink Artifacts view. */
+  flinkArtifactsMode = "confluent.flinkArtifactsMode",
   /** The user applied a search string to the Resources view. */
   resourceSearchApplied = "confluent.resourceSearchApplied",
   /** The user applied a search string to the Topics view. */

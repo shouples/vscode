@@ -9,7 +9,7 @@ import { ResponseError } from "../clients/flinkArtifacts";
 import * as errors from "../errors";
 import { CCloudResourceLoader } from "../loaders";
 import * as notifications from "../notifications";
-import { FlinkArtifactsViewProvider } from "./flinkArtifacts";
+import { FlinkArtifactsViewMode, FlinkArtifactsViewProvider } from "./flinkArtifacts";
 
 describe("FlinkArtifactsViewProvider", () => {
   let sandbox: sinon.SinonSandbox;
@@ -53,8 +53,11 @@ describe("FlinkArtifactsViewProvider", () => {
       // Should clear the artifacts array and fire the change event.
       await viewProvider.refresh();
 
+      const artifactsMode = (viewProvider as any)["modes"].get(
+        FlinkArtifactsViewMode.Artifacts,
+      ) as any;
       sinon.assert.calledOnce(changeFireStub);
-      assert.deepStrictEqual(viewProvider["_artifacts"], []);
+      assert.deepStrictEqual(artifactsMode["artifacts"], []);
     });
 
     it("fetches new artifacts when a resource is selected", async () => {
@@ -83,7 +86,10 @@ describe("FlinkArtifactsViewProvider", () => {
       sinon.assert.calledTwice(changeFireStub);
       sinon.assert.calledOnce(stubbedLoader.getFlinkArtifacts);
       sinon.assert.calledWith(stubbedLoader.getFlinkArtifacts, resource);
-      assert.deepStrictEqual(viewProvider["_artifacts"], mockArtifacts);
+      const artifactsMode = (viewProvider as any)["modes"].get(
+        FlinkArtifactsViewMode.Artifacts,
+      ) as any;
+      assert.deepStrictEqual(artifactsMode["artifacts"], mockArtifacts);
     });
 
     it("returns artifacts when compute pool is selected", () => {
@@ -95,7 +101,10 @@ describe("FlinkArtifactsViewProvider", () => {
       ];
 
       viewProvider["resource"] = TEST_CCLOUD_FLINK_COMPUTE_POOL;
-      viewProvider["_artifacts"] = mockArtifacts;
+      const artifactsMode = (viewProvider as any)["modes"].get(
+        FlinkArtifactsViewMode.Artifacts,
+      ) as any;
+      artifactsMode["artifacts"] = mockArtifacts;
 
       const children = viewProvider.getChildren();
       assert.deepStrictEqual(children, mockArtifacts);
@@ -185,7 +194,10 @@ describe("FlinkArtifactsViewProvider", () => {
         const mockError = new ResponseError(new Response("test error", { status: undefined }));
         stubbedLoader.getFlinkArtifacts.rejects(mockError);
 
-        viewProvider["_artifacts"] = [
+        const artifactsMode = (viewProvider as any)["modes"].get(
+          FlinkArtifactsViewMode.Artifacts,
+        ) as any;
+        artifactsMode["artifacts"] = [
           createFlinkArtifact({
             id: "artifact1",
             name: "Initial Artifact",
@@ -196,8 +208,11 @@ describe("FlinkArtifactsViewProvider", () => {
           await viewProvider.refresh();
         }, mockError);
 
+        const artifactsModeAfter = (viewProvider as any)["modes"].get(
+          FlinkArtifactsViewMode.Artifacts,
+        ) as any;
         // Artifacts should be cleared at the start of refresh
-        assert.deepStrictEqual(viewProvider["_artifacts"], []);
+        assert.deepStrictEqual(artifactsModeAfter["artifacts"], []);
 
         // Should fire change event once at start to clear (error prevents final fire call)
         sinon.assert.calledOnce(changeFireStub);

@@ -25,6 +25,7 @@ import { registerDocumentCommands } from "./commands/documents";
 import { registerEnvironmentCommands } from "./commands/environments";
 import { registerExtraCommands } from "./commands/extra";
 import { registerFlinkComputePoolCommands } from "./commands/flinkComputePools";
+import { registerFlinkArtifactCommands } from "./commands/flinkArtifacts";
 import { registerFlinkStatementCommands } from "./commands/flinkStatements";
 import { registerKafkaClusterCommands } from "./commands/kafkaClusters";
 import { registerOrganizationCommands } from "./commands/organizations";
@@ -253,6 +254,7 @@ async function _activateExtension(
     ...registerDockerCommands(),
     ...registerProjectGenerationCommands(),
     ...registerFlinkComputePoolCommands(),
+    ...registerFlinkArtifactCommands(),
     ...registerFlinkStatementCommands(),
     ...registerDocumentCommands(),
     ...registerSearchCommands(),
@@ -349,6 +351,7 @@ async function setupContextValues() {
   // require re-selecting a cluster for the Topics/Schemas views on extension (re)start
   const kafkaClusterSelected = setContextValue(ContextValues.kafkaClusterSelected, false);
   const schemaRegistrySelected = setContextValue(ContextValues.schemaRegistrySelected, false);
+  const flinkArtifactsMode = setContextValue(ContextValues.flinkArtifactsMode, "artifacts");
   // constants for easier `when` clause matching in package.json; not updated dynamically
   const openInCCloudResources = setContextValue(ContextValues.CCLOUD_RESOURCES, [
     "ccloud-environment",
@@ -411,6 +414,7 @@ async function setupContextValues() {
     chatParticipantEnabled,
     kafkaClusterSelected,
     schemaRegistrySelected,
+    flinkArtifactsMode,
     openInCCloudResources,
     viewsWithResources,
     resourcesWithIds,

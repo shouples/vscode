@@ -371,3 +371,88 @@ export abstract class ParentedBaseViewProvider<
     }
   }
 }
+
+/** Delegate interface for individual view modes handled by {@link MultiModeViewProvider}. */
+export interface ViewModeDelegate<P, T> {
+  getChildren(element?: T): T[];
+  getTreeItem(element: T): TreeItem;
+  refresh(): Promise<void>;
+  setParentResource?(resource: P | null): Promise<void> | void;
+}
+
+/**
+ * Base class for view providers that can switch between multiple "modes" sharing a single
+ * tree view ID. Each mode is responsible for providing children, tree items and refresh logic
+ * while this class handles registration and delegating calls to the active mode.
+ */
+export abstract class MultiModeViewProvider<
+  P extends EnvironmentedBaseViewProviderData,
+> extends ParentedBaseViewProvider<P, any> {
+  /** Map of mode IDs to their corresponding delegates. */
+  protected modes: Map<string, ViewModeDelegate<P, any>> = new Map();
+
+  /** Identifier for the default mode. */
+  protected abstract defaultMode: string;
+
+  /** Context value to set when the mode changes. */
+  protected modeContextValue?: ContextValues;
+
+  /** Currently active mode ID. */
+  protected currentMode: string;
+
+  constructor() {
+    super();
+    this.currentMode = this.defaultMode;
+  }
+
+  /** Register a new mode delegate for this view provider. */
+  protected registerMode(id: string, mode: ViewModeDelegate<P, any>): void {
+    this.modes.set(id, mode);
+  }
+
+  /** Switch the active mode and refresh the view. */
+  async switchMode(id: string): Promise<void> {
+    if (this.currentMode === id || !this.modes.has(id)) {
+      return;
+    }
+    this.currentMode = id;
+    if (this.modeContextValue) {
+      await setContextValue(this.modeContextValue, id);
+    }
+    await this.refresh();
+  }
+
+  /** Fire tree data change event for use by delegates. */
+  public fireTreeDataChanged(): void {
+    this._onDidChangeTreeData.fire();
+  }
+
+  protected get activeMode(): ViewModeDelegate<P, any> {
+    const mode = this.modes.get(this.currentMode);
+    if (!mode) {
+      throw new Error(`Mode ${this.currentMode} not registered`);
+    }
+    return mode;
+  }
+
+  override getChildren(element?: any): any[] {
+    return this.activeMode.getChildren(element);
+  }
+
+  override getTreeItem(element: any): TreeItem {
+    return this.activeMode.getTreeItem(element);
+  }
+
+  override async refresh(): Promise<void> {
+    await this.activeMode.refresh();
+  }
+
+  override async setParentResource(resource: P | null): Promise<void> {
+    for (const mode of this.modes.values()) {
+      if (mode.setParentResource) {
+        await mode.setParentResource(resource);
+      }
+    }
+    await super.setParentResource(resource);
+  }
+}
