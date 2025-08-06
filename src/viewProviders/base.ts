@@ -371,3 +371,78 @@ export abstract class ParentedBaseViewProvider<
     }
   }
 }
+
+export interface ViewModeDelegate<T extends BaseViewProviderData> {
+  getChildren(element?: T): T[];
+  getTreeItem(element: T): TreeItem;
+  refresh(): Promise<void>;
+}
+
+/**
+ * Base class for tree view providers that support multiple modes.
+ *
+ * A "mode" is a collection of delegate functions that handle the
+ * `getChildren`, `getTreeItem`, and `refresh` logic for the view. Switching
+ * modes delegates all tree operations to the selected mode while maintaining a
+ * single VS Code view registration.
+ */
+export abstract class MultiModeViewProvider<
+    P extends EnvironmentedBaseViewProviderData,
+    T extends BaseViewProviderData,
+  >
+  extends ParentedBaseViewProvider<P, T>
+{
+  /** Identifier for the mode used when the view is first created. */
+  protected abstract defaultMode: string;
+  /** Map of mode IDs to their delegate implementations. */
+  protected modes: Map<string, ViewModeDelegate<T>> = new Map();
+  /** Current active mode ID. */
+  protected currentMode: string = "";
+  /** Optional context value to update when switching modes. */
+  protected modeContextValue?: ContextValues;
+
+  constructor() {
+    super();
+  }
+
+  /** Register a delegate implementation for a mode. */
+  protected registerMode(id: string, delegate: ViewModeDelegate<T>): void {
+    this.modes.set(id, delegate);
+  }
+
+  /** Switch to a different mode and refresh the view. */
+  switchMode(id: string): void {
+    if (this.currentMode === id) {
+      return;
+    }
+    if (!this.modes.has(id)) {
+      throw new Error(`Unknown mode: ${id}`);
+    }
+    this.currentMode = id;
+    if (this.modeContextValue) {
+      void setContextValue(this.modeContextValue, id);
+    }
+    void this.refresh();
+  }
+
+  /** Convenience accessor for the current mode delegate. */
+  protected get delegate(): ViewModeDelegate<T> {
+    const mode = this.modes.get(this.currentMode);
+    if (!mode) {
+      throw new Error(`No delegate registered for mode ${this.currentMode}`);
+    }
+    return mode;
+  }
+
+  getChildren(element?: T): T[] {
+    return this.delegate.getChildren(element);
+  }
+
+  getTreeItem(element: T): TreeItem {
+    return this.delegate.getTreeItem(element);
+  }
+
+  async refresh(): Promise<void> {
+    await this.delegate.refresh();
+  }
+}

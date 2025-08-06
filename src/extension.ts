@@ -35,6 +35,7 @@ import { registerSearchCommands } from "./commands/search";
 import { registerSupportCommands } from "./commands/support";
 import { registerTopicCommands } from "./commands/topics";
 import { registerUploadUDFCommand } from "./commands/uploadUDF";
+import { registerFlinkArtifactCommands } from "./commands/flinkArtifacts";
 import { AUTH_PROVIDER_ID, AUTH_PROVIDER_LABEL, IconNames } from "./constants";
 import { activateMessageViewer } from "./consume";
 import { setExtensionContext } from "./context/extension";
@@ -254,6 +255,7 @@ async function _activateExtension(
     ...registerProjectGenerationCommands(),
     ...registerFlinkComputePoolCommands(),
     ...registerFlinkStatementCommands(),
+    ...registerFlinkArtifactCommands(),
     ...registerDocumentCommands(),
     ...registerSearchCommands(),
     registerUploadUDFCommand(),
@@ -378,6 +380,7 @@ async function setupContextValues() {
     "ccloud-schema-registry", // only ID, no name
     "ccloud-flink-compute-pool",
     "ccloud-flink-artifact",
+    "ccloud-flink-udf",
     "local-kafka-cluster",
     "local-schema-registry",
     "direct-kafka-cluster",
@@ -392,6 +395,7 @@ async function setupContextValues() {
     "ccloud-flink-compute-pool",
     "ccloud-flink-statement",
     "ccloud-flink-artifact",
+    "ccloud-flink-udf",
     "local-kafka-cluster",
     "direct-kafka-cluster",
     // topics also have names, but their context values vary wildly and must be regex-matched
@@ -407,6 +411,10 @@ async function setupContextValues() {
     SCHEMA_URI_SCHEME,
     MESSAGE_URI_SCHEME,
   ]);
+  const flinkArtifactsMode = setContextValue(
+    ContextValues.flinkArtifactsMode,
+    "artifacts",
+  );
   await Promise.all([
     chatParticipantEnabled,
     kafkaClusterSelected,
@@ -417,6 +425,7 @@ async function setupContextValues() {
     resourcesWithNames,
     resourcesWithURIs,
     diffableResources,
+    flinkArtifactsMode,
   ]);
 }
 

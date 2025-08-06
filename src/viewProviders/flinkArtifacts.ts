@@ -1,16 +1,20 @@
 import { TreeDataProvider, TreeItem } from "vscode";
-import { ContextValues } from "../context/values";
+import { ContextValues, setContextValue } from "../context/values";
 import { currentFlinkArtifactsPoolChanged } from "../emitters";
 import { isResponseError, logError } from "../errors";
 import { CCloudResourceLoader } from "../loaders";
 import { FlinkArtifact, FlinkArtifactTreeItem } from "../models/flinkArtifact";
+import { FlinkUdf, FlinkUdfTreeItem } from "../models/flinkUdf";
 import { CCloudFlinkComputePool } from "../models/flinkComputePool";
 import { showErrorNotificationWithButtons } from "../notifications";
-import { ParentedBaseViewProvider } from "./base";
+import { MultiModeViewProvider } from "./base";
 
 export class FlinkArtifactsViewProvider
-  extends ParentedBaseViewProvider<CCloudFlinkComputePool, FlinkArtifact>
-  implements TreeDataProvider<FlinkArtifact>
+  extends MultiModeViewProvider<
+    CCloudFlinkComputePool,
+    FlinkArtifact | FlinkUdf
+  >
+  implements TreeDataProvider<FlinkArtifact | FlinkUdf>
 {
   readonly kind = "flinkArtifacts";
   loggerName = "viewProviders.flinkArtifacts";
@@ -18,15 +22,40 @@ export class FlinkArtifactsViewProvider
 
   parentResourceChangedEmitter = currentFlinkArtifactsPoolChanged;
   parentResourceChangedContextValue = ContextValues.flinkArtifactsPoolSelected;
-  private _artifacts: FlinkArtifact[] = [];
+  modeContextValue = ContextValues.flinkArtifactsMode;
+  protected defaultMode = "artifacts";
 
-  getChildren(element?: FlinkArtifact): FlinkArtifact[] {
+  private _artifacts: FlinkArtifact[] = [];
+  private _udfs: FlinkUdf[] = [];
+
+  constructor() {
+    super();
+    this.currentMode = this.defaultMode;
+    if (this.modeContextValue) {
+      void setContextValue(this.modeContextValue, this.currentMode);
+    }
+    this.registerMode("artifacts", {
+      getChildren: this.getArtifactChildren.bind(this),
+      getTreeItem: (element: FlinkArtifact | FlinkUdf) =>
+        this.getArtifactTreeItem(element as FlinkArtifact),
+      refresh: this.refreshArtifacts.bind(this),
+    });
+    this.registerMode("udfs", {
+      getChildren: this.getUdfChildren.bind(this),
+      getTreeItem: (element: FlinkArtifact | FlinkUdf) =>
+        this.getUdfTreeItem(element as FlinkUdf),
+      refresh: this.refreshUdfs.bind(this),
+    });
+  }
+
+  private getArtifactChildren(element?: FlinkArtifact): FlinkArtifact[] {
     if (!this.computePool) {
       return [];
     }
-    return this.filterChildren(element, this._artifacts);
+    return this.filterChildren(element, this._artifacts) as FlinkArtifact[];
   }
-  async refresh(): Promise<void> {
+
+  private async refreshArtifacts(): Promise<void> {
     this._artifacts = [];
 
     if (this.computePool) {
@@ -52,8 +81,31 @@ export class FlinkArtifactsViewProvider
 
     this._onDidChangeTreeData.fire();
   }
-  getTreeItem(element: FlinkArtifact): TreeItem {
+
+  private getArtifactTreeItem(element: FlinkArtifact): TreeItem {
     return new FlinkArtifactTreeItem(element);
+  }
+
+  private getUdfChildren(element?: FlinkUdf): FlinkUdf[] {
+    if (!this.computePool) {
+      return [];
+    }
+    return this.filterChildren(element, this._udfs);
+  }
+
+  private async refreshUdfs(): Promise<void> {
+    this._udfs = [];
+
+    if (this.computePool) {
+      this._onDidChangeTreeData.fire();
+      // TODO: load UDFs when API is available
+    }
+
+    this._onDidChangeTreeData.fire();
+  }
+
+  private getUdfTreeItem(element: FlinkUdf): TreeItem {
+    return new FlinkUdfTreeItem(element);
   }
 
   get computePool(): CCloudFlinkComputePool | null {
