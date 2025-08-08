@@ -68,7 +68,7 @@ import { initializeFlinkLanguageClientManager } from "./flinkSql/flinkLanguageCl
 import { FlinkStatementManager } from "./flinkSql/flinkStatementManager";
 import { constructResourceLoaderSingletons } from "./loaders";
 import { cleanupOldLogFiles, getLogFileStream, Logger, OUTPUT_CHANNEL } from "./logging";
-import { registerProjectGenerationCommands, setProjectScaffoldListener } from "./scaffold";
+import { registerProjectGenerationCommands, setProjectScaffoldListener } from "./projectGeneration";
 import { JSON_DIAGNOSTIC_COLLECTION } from "./schemas/diagnosticCollection";
 import { getSidecar, getSidecarManager } from "./sidecar";
 import { createLocalConnection, getLocalConnection } from "./sidecar/connections/local";
