@@ -10,7 +10,7 @@ import {
 import { ScaffoldV1Template } from "../../clients/scaffoldingService";
 import { Logger } from "../../logging";
 import { getTemplatesList } from "../../projectGeneration/templates";
-import { scaffoldProjectRequest } from "../../scaffold";
+import { scaffoldProjectRequest } from "../../projectGeneration";
 import { PostResponse } from "../../webview/scaffold-form";
 import { BaseLanguageModelTool, TextOnlyToolResultPart } from "./base";
 
