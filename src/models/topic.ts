@@ -48,7 +48,7 @@ export class KafkaTopic extends Data implements IResourceBase, ISearchable {
   }
 
   /** Property producing a unique identifier for a topic based on both the cluster id and the topic name */
-  get uniqueId(): string {
+  get id(): string {
     return `${this.clusterId}-${this.name}`;
   }
 
