@@ -24,6 +24,12 @@ export function updateCollapsibleStateFromSearch(
   } else if (element.children?.length) {
     // has children, but none of them match
     treeItem.collapsibleState = TreeItemCollapsibleState.Collapsed;
+  } else if (
+    element.children === undefined &&
+    origCollapsibleState === TreeItemCollapsibleState.Collapsed
+  ) {
+    // children not yet loaded, but item was originally collapsible - keep it collapsible
+    treeItem.collapsibleState = TreeItemCollapsibleState.Collapsed;
   } else {
     // leaf item
     treeItem.collapsibleState = TreeItemCollapsibleState.None;
