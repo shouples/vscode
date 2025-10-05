@@ -93,6 +93,7 @@ import { RefreshableTreeViewProvider } from "./viewProviders/baseModels/base";
 import { FlinkDatabaseViewProvider } from "./viewProviders/flinkDatabase";
 import { FlinkStatementsViewProvider } from "./viewProviders/flinkStatements";
 import { FlinkDatabaseViewProviderMode } from "./viewProviders/multiViewDelegates/constants";
+import { NewTopicsViewProvider } from "./viewProviders/newTopics";
 import { ResourceViewProvider } from "./viewProviders/resources";
 import { SchemasViewProvider } from "./viewProviders/schemas";
 import { SupportViewProvider } from "./viewProviders/support";
@@ -204,7 +205,8 @@ async function _activateExtension(
   // set up the different view providers
 
   const resourceViewProvider = ResourceViewProvider.getInstance();
-  const topicViewProvider = TopicViewProvider.getInstance();
+  // const topicViewProvider = TopicViewProvider.getInstance();
+  const topicViewProvider = NewTopicsViewProvider.getInstance();
   const schemasViewProvider = SchemasViewProvider.getInstance();
   const statementsViewProvider = FlinkStatementsViewProvider.getInstance();
   const artifactsViewProvider = FlinkDatabaseViewProvider.getInstance();
