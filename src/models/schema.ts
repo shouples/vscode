@@ -101,6 +101,15 @@ export class Subject implements IResourceBase, ISearchable, ISchemaRegistryResou
   }
 
   /**
+   * Getter to satisfy ISearchable.children requirement.
+   * Returns the schemas array (which may be null if not yet loaded).
+   * Converts null to undefined to match ISearchable interface.
+   */
+  get children(): Schema[] | undefined {
+    return this.schemas ?? undefined;
+  }
+
+  /**
    * Merge the given schema array into ours, if any, ala mergesort:
    * If we have NO schemas array currently, retain the provided array.
    *
@@ -177,7 +186,7 @@ export class SubjectWithSchemas extends Subject {
 }
 
 /** Base class representing a single version of a schema. */
-export class Schema extends Data implements IResourceBase {
+export class Schema extends Data implements IResourceBase, ISearchable {
   connectionId!: Enforced<ConnectionId>;
   connectionType!: Enforced<ConnectionType>;
 
@@ -195,6 +204,13 @@ export class Schema extends Data implements IResourceBase {
   /** Returns true if this schema subject corresponds to the topic name per TopicNameStrategy or TopicRecordNameStrategy*/
   matchesTopicName(topicName: string): boolean {
     return subjectMatchesTopicName(this.subject, topicName);
+  }
+
+  /**
+   * Schemas are leaf nodes, so they have no children.
+   */
+  get children(): undefined {
+    return undefined;
   }
 
   /** Get the proper file extension */
