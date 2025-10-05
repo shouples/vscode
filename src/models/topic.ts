@@ -65,7 +65,7 @@ export class KafkaTopicTreeItem extends vscode.TreeItem {
     super(resource.name);
 
     // internal properties
-    this.id = resource.uniqueId;
+    this.id = resource.id;
     this.resource = resource;
     this.contextValue = `${this.resource.connectionType.toLowerCase()}-kafka-topic`;
     if (this.resource.hasSchema) {
