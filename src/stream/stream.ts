@@ -381,17 +381,17 @@ export class BitSet {
 
   /** Set a bit to 1 at index. */
   set(index: number) {
-    this.bits[index >>> 5] |= ONE >>> index;
+    this.bits[index >>> 5] |= ONE >>> (index & 31);
   }
 
   /** Set a bit to 0 at index. */
   unset(index: number) {
-    this.bits[index >>> 5] &= ~(ONE >>> index);
+    this.bits[index >>> 5] &= ~(ONE >>> (index & 31));
   }
 
   /** Check if an index is set. */
   includes(index: number) {
-    return (this.bits[index >>> 5] & (ONE >>> index)) !== 0;
+    return (this.bits[index >>> 5] & (ONE >>> (index & 31))) !== 0;
   }
 
   /**
@@ -400,7 +400,7 @@ export class BitSet {
    */
   predicate() {
     let bits = this.bits;
-    return (index: number) => (bits[index >>> 5] & (ONE >>> index)) !== 0;
+    return (index: number) => (bits[index >>> 5] & (ONE >>> (index & 31))) !== 0;
   }
 
   /**
@@ -419,7 +419,7 @@ export class BitSet {
   }
 
   copy() {
-    const copy = new BitSet(0);
+    const copy = new BitSet(this.capacity);
     copy.bits = this.bits.slice();
     return copy;
   }
